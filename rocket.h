@@ -20,6 +20,20 @@ typedef struct rocket_list_node {
     rocket_t* rocket;
     struct rocket_list_node* next;
 } rocket_list_node;
+typedef struct rocket_ctrl_pkt {
+    uint8_t type;               /* control packet type */
+    uint16_t cid;                /* connection identifier */
+    uint32_t k;                 /* shared private key */
+    /* TODO: other parameters ... */
+} rocket_ctrl_pkt;
+void rocket_ltobytes(uint32_t l, char *bytes);
+void rocket_itobytes(uint16_t i, char *bytes);
+void rocket_stobytes(uint8_t s, char *bytes);
+uint32_t rocket_bytestol(char *bytes);
+uint16_t rocket_bytestoi(char *bytes);
+uint8_t rocket_bytestos(char *bytes);
+char *rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt);
+rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(char *bytes);
 
 int rocket_ctrl_server();
 int rocket_ctrl_client();
