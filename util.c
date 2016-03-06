@@ -49,7 +49,7 @@ rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(char *bytes) {
     return pkt;
 }
 
-int rocket_list_insert(rocket_list_node **head, rocket_t *rocket, int cid) {
+int rocket_list_insert(rocket_list_node **head, rocket_t *rocket, uint16_t cid) {
     rocket_list_node *node;
     if ((node = (rocket_list_node *)malloc(sizeof(*node))) == NULL)
         return -1;
@@ -65,7 +65,7 @@ int rocket_list_insert(rocket_list_node **head, rocket_t *rocket, int cid) {
     return 0;
 }
 
-int rocket_list_remove(rocket_list_node **head, int cid) {
+int rocket_list_remove(rocket_list_node **head, uint16_t cid) {
     if (*head == 0)
         return -1;
     rocket_list_node *node;
@@ -100,7 +100,7 @@ int rocket_list_remove(rocket_list_node **head, int cid) {
     }
 }
 
-rocket_t *rocket_list_find(rocket_list_node *head, int cid) {
+rocket_t *rocket_list_find(rocket_list_node *head, uint16_t cid) {
     if (head == 0)
         return NULL;
     rocket_list_node *node;
