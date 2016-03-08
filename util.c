@@ -1,47 +1,44 @@
 #include "rocket.h"
 
-void rocket_ltobytes(uint32_t l, char *bytes) {
-    bytes[0] = (l >> 24) & 0x000000FF;
-    bytes[1] = (l >> 16) & 0x000000FF;
-    bytes[2] = (l >> 8) & 0x000000FF;
-    bytes[3] = l & 0x000000FF;
+void rocket_ltobytes(uint32_t l, unsigned char *bytes) {
+    bytes[0] = (l >> 24) & 0xFF;
+    bytes[1] = (l >> 16) & 0xFF;
+    bytes[2] = (l >> 8) & 0xFF;
+    bytes[3] = l & 0xFF;
 }
 
-void rocket_itobytes(uint16_t i, char *bytes) {
-    bytes[0] = (i >> 8) & 0x00FF;
-    bytes[1] = i & 0x00FF;
+void rocket_itobytes(uint16_t i, unsigned char *bytes) {
+    bytes[0] = (i >> 8) & 0xFF;
+    bytes[1] = i & 0xFF;
 }
 
-void rocket_stobytes(uint8_t s, char *bytes) {
+void rocket_stobytes(uint8_t s, unsigned char *bytes) {
     bytes[0] = s & 0xFF;
 }
 
-uint32_t rocket_bytestol(char *bytes) {
+uint32_t rocket_bytestol(unsigned char *bytes) {
     return (uint32_t)bytes[3] |
         (uint32_t)bytes[2] << 8 |
         (uint32_t)bytes[1] << 16 |
         (uint32_t)bytes[0] << 24;
 }
 
-uint16_t rocket_bytestoi(char *bytes) {
+uint16_t rocket_bytestoi(unsigned char *bytes) {
     return (uint16_t)bytes[1] |
         (uint16_t)bytes[0] << 8;
 }
 
-uint8_t rocket_bytestos(char *bytes) {
+uint8_t rocket_bytestos(unsigned char *bytes) {
     return (uint8_t)bytes[0];
 }
 
-char *rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt) {
-    int ROCK_CTRLPKTSIZE = 7; //TODO when finished, place w/ a define inside rocket.h
-    char *bytes = malloc(ROCK_CTRLPKTSIZE * sizeof(char));
+void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     rocket_stobytes(pkt->type, bytes);
     rocket_itobytes(pkt->cid, bytes+1);
     rocket_ltobytes(pkt->k, bytes+3);
-    return bytes;
 }
 
-rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(char *bytes) {
+rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     rocket_ctrl_pkt *pkt = malloc(sizeof(rocket_ctrl_pkt));
     pkt->type = rocket_bytestos(bytes);
     pkt->cid = rocket_bytestoi(bytes+1);
