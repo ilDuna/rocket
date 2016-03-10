@@ -10,20 +10,27 @@
 #define ROCK_CTRLTIMEOUT    5
 #define ROCK_DH_BIT         128
 #define ROCK_DH_BYTE        ROCK_DH_BIT/8
+#define ROCK_TCP_RCVBUF     64000
+#define ROCK_TCP_SNDBUF     64000
+#define ROCK_HB_RATE        15
+#define ROCK_NET_CHECK      60
 
 typedef enum {SERVER, CLIENT} rocket_role;
 typedef enum {CONNECTED, SUSPENDED, CLOSED} rocket_state;
 typedef struct rocket_t {
     rocket_role role;       /* server or client rocket */
     uint16_t cid;           /* connection identifier */
-    BIGNUM* a;               /* private key */
-    BIGNUM* k;               /* shared private key */
+    BIGNUM* a;              /* private key */
+    BIGNUM* k;              /* shared private key */
     rocket_state state;     /* current state */
     uint32_t sd;            /* tcp socket descriptor */
     uint16_t port;          /* tcp port */
     uint8_t tcp_task;       /* 1 if the tcp re/connection thread
                             has been started, 0 otherwise */
     uint32_t buffer_size;   /* inflight buffer size */
+    pthread_t cnet_monitor; /* client network monitor */
+    uint32_t lasthbtime;    /* last valid heartbeat timestamp in s */
+    char* serveraddr;       /* server ip address */
 } rocket_t;
 typedef struct rocket_list_node {
     uint16_t cid;
@@ -34,15 +41,14 @@ typedef struct rocket_ctrl_pkt {
     uint8_t type;           /* control packet type */
     uint16_t port;          /* requested tcp port */
     uint16_t cid;           /* connection identifier */
-    BIGNUM* k;               /* shared private key */
+    BIGNUM* k;              /* shared private key */
     uint32_t buffer;        /* tcp receive buffer size */
-    /* TODO: other parameters ... */
 } rocket_ctrl_pkt;
 
 int rocket_ctrl_server(rocket_list_node **head, pthread_mutex_t *lock);
 uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *lock);
-uint16_t rocket_client(rocket_list_node **head, const char *addr, uint16_t port, pthread_mutex_t *lock);
-int rocket_connect(int reconnect, rocket_list_node **head, const char *addr, uint16_t port, pthread_mutex_t *lock);
+uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock);
+int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock);
 int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock);
 /* send & receive calls should be designed to send the entire msg,
  * so no length argument is necessary? TO-BE-DECIDED. */
