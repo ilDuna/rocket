@@ -19,7 +19,62 @@ static const char *G = "03";
 struct thread_arg {
     rocket_list_node **head;
     pthread_mutex_t *lock;
+    uint16_t port;
 };
+
+void *rocket_tcp_task_open(void *arg) {
+    rocket_list_node **head = ((struct thread_arg *)arg)->head;
+    pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
+    uint16_t port = ((struct thread_arg *)arg)->port;
+
+    pthread_mutex_lock(lock);
+    rocket_t *rocket = rocket_list_findbyport(*head, port);
+    pthread_mutex_unlock(lock);
+    if (rocket == 0)
+        return NULL;
+
+    int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
+    if (tcpsock < 0) {
+        rocket->tcp_task = 0;
+        printf("[server]\ttcp socket [%d] creation error.\n", port);
+        return NULL;
+    }
+    int optval = 1;
+    setsockopt(tcpsock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    struct sockaddr_in serveraddr;
+    bzero((char *)&serveraddr, sizeof(serveraddr));
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serveraddr.sin_port = htons(port);
+    int bind_ret = bind(tcpsock, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+    if (bind_ret < 0) {
+        rocket->tcp_task = 0;
+        printf("[server]\ttcp socket [%d] binding error.\n", port);
+        return NULL;
+    }
+    int listen_ret = listen(tcpsock, 5);
+    if (listen_ret < 0) {
+        rocket->tcp_task = 0;
+        printf("[server]\ttcp socket [%d] listen error.\n", port);
+        return NULL;
+    }
+    struct sockaddr_in clientaddr;
+    int clientlen = sizeof(clientaddr);
+    int activetcpsock = accept(tcpsock, (struct sockaddr *)&clientaddr, (socklen_t *)&clientlen);
+    if (activetcpsock < 0) {
+        rocket->tcp_task = 0;
+        printf("[server]\ttcp socket [%d] accept error.\n", port);
+        return NULL;
+    }
+    rocket->sd = activetcpsock;
+    rocket->state = CONNECTED;
+    rocket->tcp_task = 0;
+
+    //TODO: signal anyone?
+    printf("[server]\ttcp socket at port %d connected at rocket session cid %d.\n", port, rocket->cid);
+    rocket_list_print_item(rocket);
+    return NULL;
+}
 
 void *rocket_ctrl_listen(void *arg) {
     rocket_list_node **head = ((struct thread_arg *)arg)->head;
@@ -59,21 +114,23 @@ void *rocket_ctrl_listen(void *arg) {
             if (rocket == 0)
                 sendpkt->type = 100;
             else {
-                sendpkt->type = 2;
                 rocket->buffer_size = recvpkt->buffer;
-                BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);
+                BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* random private key a */
                 BN_CTX *ctx = BN_CTX_new();
                 BIGNUM *g_bn = BN_new();
                 BIGNUM *p_bn = BN_new();
                 sendpkt->k = BN_new();
                 BN_hex2bn(&g_bn, G);
                 BN_hex2bn(&p_bn, P);
-                BN_mod_exp(sendpkt->k, g_bn, rocket->a, p_bn, ctx);
+                BN_mod_exp(sendpkt->k, g_bn, rocket->a, p_bn, ctx);     /* A = g^a mod p (to send in clear) */
                 BN_free(g_bn);
                 BN_free(p_bn);
                 BN_CTX_free(ctx);
+
+                sendpkt->type = 2;
             }
 
+            bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
             rocket_serialize_ctrlpkt(sendpkt, ctrlbuf);
             int m = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&clientaddr, clientlen);
             if (m < ROCK_CTRLPKTSIZE) {
@@ -82,7 +139,43 @@ void *rocket_ctrl_listen(void *arg) {
             }
         }
         else if (recvpkt->type == 3) {
+            pthread_mutex_lock(lock);
+            rocket_t *rocket = rocket_list_findbyport(*head, recvpkt->port);
+            pthread_mutex_unlock(lock);
+            if (rocket == 0)
+                sendpkt->type = 100;
+            else {
+                BN_CTX *ctx = BN_CTX_new();
+                BIGNUM *g_bn = BN_new();
+                BIGNUM *p_bn = BN_new();
+                sendpkt->k = BN_new();
+                BN_hex2bn(&g_bn, G);
+                BN_hex2bn(&p_bn, P);
+                BN_mod_exp(rocket->k, recvpkt->k, rocket->a, p_bn, ctx);    /* K = B^a mod p (shared private key) */
+                BN_free(g_bn);
+                BN_free(p_bn);
+                BN_CTX_free(ctx);
 
+                sendpkt->type = 4;
+                sendpkt->cid = rocket->cid;
+                sendpkt->buffer = 65000; /* TODO: get real tcp receive buffer size! */
+
+                pthread_t tid_tcpopen;
+                struct thread_arg *arg = malloc(sizeof(struct thread_arg));
+                arg->head = head;
+                arg->lock = lock;
+                arg->port = recvpkt->port;
+                rocket->tcp_task = 1;
+                pthread_create(&tid_tcpopen, NULL, rocket_tcp_task_open, arg);
+            }
+
+            bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+            rocket_serialize_ctrlpkt(sendpkt, ctrlbuf);
+            int m = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&clientaddr, clientlen);
+            if (m < ROCK_CTRLPKTSIZE) {
+                printf("[server]\tctrl socket send error.\n");
+                continue;
+            }
         }
         else if (recvpkt->type == 5) {
 
@@ -91,10 +184,10 @@ void *rocket_ctrl_listen(void *arg) {
 
         }
         
+        BN_free(recvpkt->k);
+        BN_free(sendpkt->k);
         free(recvpkt);
         free(sendpkt);
-        //TODO: MEMORY LEAK RISK!!
-        //We need to free BIGNUMs referenced by packets
     }
     return NULL;
 }
@@ -182,9 +275,70 @@ int rocket_connect(int reconnect, rocket_list_node **head, const char *addr, uin
         if (recv_2 != ROCK_CTRLPKTSIZE)
             return -1;
         rocket_ctrl_pkt *pkt_2 = rocket_deserialize_ctrlpkt(ctrlbuf);
-        printf("received pkt with A=%s\n", BN_bn2hex(pkt_2->k));
-
+        if (pkt_2->type == 100)
+            return -1;
+        rocket_ctrl_pkt pkt_3;
+        pkt_3.type = 3;
+        pkt_3.port = port;
+        pkt_3.k = BN_new();
+        BIGNUM *k = BN_new();
+        BIGNUM *b = BN_new();
+        BN_rand(b, ROCK_DH_BIT, 0, 0);              /* random private key b */
+        BN_CTX *ctx = BN_CTX_new();
+        BIGNUM *g_bn = BN_new();
+        BIGNUM *p_bn = BN_new();
+        BN_hex2bn(&g_bn, G);
+        BN_hex2bn(&p_bn, P);
+        BN_mod_exp(pkt_3.k, g_bn, b, p_bn, ctx);    /* B = g^b mod p (to send in clear) */
+        BN_mod_exp(k, pkt_2->k, b, p_bn, ctx);      /* K = A^b mod p (shared private key) */
+        BN_free(g_bn);
+        BN_free(p_bn);
+        BN_free(b);
+        BN_CTX_free(ctx);
+        BN_free(pkt_2->k);
         free(pkt_2);
+        bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        rocket_serialize_ctrlpkt(&pkt_3, ctrlbuf);
+        BN_free(pkt_3.k);
+        int send_3 = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
+        if (send_3 != ROCK_CTRLPKTSIZE)
+            return -1;
+        bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        int recv_4 = recv(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0);
+        if (recv_4 != ROCK_CTRLPKTSIZE)
+            return -1;
+        rocket_ctrl_pkt *pkt_4 = rocket_deserialize_ctrlpkt(ctrlbuf);
+        if (pkt_4->type == 100)
+            return -1;
+        uint16_t cid = pkt_4->cid;
+        uint32_t buffer_size = pkt_4->buffer;
+
+        int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
+        if (tcpsock < 0)
+            return -1;
+        struct sockaddr_in serveraddr_tcp;
+        serveraddr_tcp.sin_family = AF_INET;
+        serveraddr_tcp.sin_port = htons(port);
+        inet_pton(AF_INET, addr, &serveraddr_tcp.sin_addr);
+        int connect_ret = connect(tcpsock, (struct sockaddr *)&serveraddr_tcp, sizeof(serveraddr_tcp));
+        if (connect_ret < 0)
+            return -1;
+
+        rocket_t *rocket = malloc(sizeof(rocket_t));
+        rocket->role = CLIENT;
+        rocket->cid = cid;
+        rocket->a = BN_new();
+        rocket->k = k;
+        rocket->state = CONNECTED;
+        rocket->sd = tcpsock;
+        rocket->port = port;
+        rocket->buffer_size = buffer_size+65000; //TODO: + host receive buffer size
+
+        pthread_mutex_lock(lock);
+        rocket_list_insert(head, rocket, cid);
+        pthread_mutex_unlock(lock);
+
+        free(pkt_4);
         return 0;
     }
     else if (reconnect == 1) {
@@ -217,6 +371,7 @@ int main(int argc, char *argv[]) {
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
         rocket_client(&head, LOCALHOST, 125, lock);
+        rocket_list_print(head);
     }
     if (argc > 1 && strcmp(argv[1], "-s")==0) {
         printf("--server mode--\n");
@@ -224,7 +379,6 @@ int main(int argc, char *argv[]) {
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
         rocket_server(&head, 125, lock);
-        rocket_list_print(head);
         rocket_ctrl_server(&head, lock);
     } 
 
