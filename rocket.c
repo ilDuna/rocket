@@ -393,10 +393,8 @@ int main(int argc, char *argv[]) {
         rocket_server(&head, 126, lock);
         rocket_ctrl_server(&head, lock);
     } 
-    else {
-        printf("Error\n");
+    else
         printf("usage: rocket [-c server_ip_address tcp_port] [-s]\n");
-    }
 
 	return 0;
 }
