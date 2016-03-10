@@ -106,6 +106,7 @@ void *rocket_ctrl_listen(void *arg) {
         }
         rocket_ctrl_pkt *recvpkt = rocket_deserialize_ctrlpkt(ctrlbuf);
         rocket_ctrl_pkt *sendpkt = malloc(sizeof(rocket_ctrl_pkt));
+        sendpkt->k = BN_new();
 
         if (recvpkt->type == 1) {
             pthread_mutex_lock(lock);
@@ -113,13 +114,14 @@ void *rocket_ctrl_listen(void *arg) {
             pthread_mutex_unlock(lock);
             if (rocket == 0)
                 sendpkt->type = 100;
+            else if (rocket->state == CONNECTED || rocket->state == SUSPENDED)
+                sendpkt->type = 100;
             else {
                 rocket->buffer_size = recvpkt->buffer;
                 BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* random private key a */
                 BN_CTX *ctx = BN_CTX_new();
                 BIGNUM *g_bn = BN_new();
                 BIGNUM *p_bn = BN_new();
-                sendpkt->k = BN_new();
                 BN_hex2bn(&g_bn, G);
                 BN_hex2bn(&p_bn, P);
                 BN_mod_exp(sendpkt->k, g_bn, rocket->a, p_bn, ctx);     /* A = g^a mod p (to send in clear) */
@@ -144,11 +146,12 @@ void *rocket_ctrl_listen(void *arg) {
             pthread_mutex_unlock(lock);
             if (rocket == 0)
                 sendpkt->type = 100;
+            else if (rocket->state == CONNECTED || rocket->state == SUSPENDED)
+                sendpkt->type = 100;
             else {
                 BN_CTX *ctx = BN_CTX_new();
                 BIGNUM *g_bn = BN_new();
                 BIGNUM *p_bn = BN_new();
-                sendpkt->k = BN_new();
                 BN_hex2bn(&g_bn, G);
                 BN_hex2bn(&p_bn, P);
                 BN_mod_exp(rocket->k, recvpkt->k, rocket->a, p_bn, ctx);    /* K = B^a mod p (shared private key) */
@@ -358,10 +361,14 @@ uint16_t rocket_client(rocket_list_node **head, const char *addr, uint16_t port,
         if (res == 0)
             break;
         retry--;
+        printf("[client]\trocket establishment failed. Retrying...\n");
     }
-
+    pthread_mutex_lock(lock);
+    rocket_t *rocket = rocket_list_findbyport(*head, port);
+    pthread_mutex_unlock(lock);
+    printf("[client]\trocket established at %s:%d.\n", addr, port);
     /* start thread to manage heartbeats and connection recovery */
-    return 0;
+    return rocket->cid;
 }
 
 int main(int argc, char *argv[]) {
