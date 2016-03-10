@@ -329,6 +329,8 @@ void *rocket_client_network_monitor(void *arg) {
     uint16_t cid = ((struct thread_arg *)arg)->cid;
     int ctrlsock = ((struct thread_arg *)arg)->ctrlsock;
 
+    printf("[client]\tnetwork monitor started.\n");
+
     pthread_mutex_lock(lock);
     rocket_t *rocket = rocket_list_find(*head, cid);
     pthread_mutex_unlock(lock);
