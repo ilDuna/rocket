@@ -372,12 +372,12 @@ uint16_t rocket_client(rocket_list_node **head, const char *addr, uint16_t port,
 }
 
 int main(int argc, char *argv[]) {
-    if (argc > 1 && strcmp(argv[1], "-c")==0) {
+    if (argc > 2 && strcmp(argv[1], "-c")==0) {
         printf("--client mode--\n");
         pthread_mutex_t *lock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
-        rocket_client(&head, LOCALHOST, 125, lock);
+        rocket_client(&head, argv[2], 125, lock);
         rocket_list_print(head);
     }
     if (argc > 1 && strcmp(argv[1], "-s")==0) {
