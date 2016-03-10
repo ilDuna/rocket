@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <strings.h>
 #include <errno.h>
+#include <unistd.h>
 
 #define LOCALHOST       "127.0.0.1"
 
@@ -73,6 +74,9 @@ void *rocket_tcp_task_open(void *arg) {
     //TODO: signal anyone?
     printf("[server]\ttcp socket at port %d connected at rocket session cid %d.\n", port, rocket->cid);
     rocket_list_print_item(rocket);
+    int close_ret = close(tcpsock);
+    if (close_ret < 0)
+        printf("[server]\tfailed close on tcp socket file descriptor.\n");
     return NULL;
 }
 
@@ -372,22 +376,27 @@ uint16_t rocket_client(rocket_list_node **head, const char *addr, uint16_t port,
 }
 
 int main(int argc, char *argv[]) {
-    if (argc > 2 && strcmp(argv[1], "-c")==0) {
+    if (argc > 3 && strcmp(argv[1], "-c")==0) {
         printf("--client mode--\n");
         pthread_mutex_t *lock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
-        rocket_client(&head, argv[2], 125, lock);
+        rocket_client(&head, argv[2], (uint16_t)atoi(argv[3]), lock);
         rocket_list_print(head);
     }
-    if (argc > 1 && strcmp(argv[1], "-s")==0) {
+    else if (argc > 1 && strcmp(argv[1], "-s")==0) {
         printf("--server mode--\n");
         pthread_mutex_t *lock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
         rocket_server(&head, 125, lock);
+        rocket_server(&head, 126, lock);
         rocket_ctrl_server(&head, lock);
     } 
+    else {
+        printf("Error\n");
+        printf("usage: rocket [-c server_ip_address tcp_port] [-s]\n");
+    }
 
 	return 0;
 }
