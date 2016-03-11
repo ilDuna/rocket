@@ -528,7 +528,7 @@ int main(int argc, char *argv[]) {
         rocket_list_node *head = 0;
         rocket_client(&head, argv[2], (uint16_t)atoi(argv[3]), lock);
         rocket_list_print(head);
-        sleep(180);
+        sleep(500); //just for debug
     }
     else if (argc > 1 && strcmp(argv[1], "-s")==0) {
         printf("--server mode--\n");

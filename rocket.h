@@ -13,7 +13,7 @@
 #define ROCK_TCP_RCVBUF     64000
 #define ROCK_TCP_SNDBUF     64000
 #define ROCK_HB_RATE        15
-#define ROCK_NET_CHECK      60
+#define ROCK_NET_CHECK      30
 
 typedef enum {SERVER, CLIENT} rocket_role;
 typedef enum {CONNECTED, SUSPENDED, CLOSED} rocket_state;

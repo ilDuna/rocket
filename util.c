@@ -215,5 +215,6 @@ void rocket_list_print_item(rocket_t *rocket) {
     printf("a:\t\t%s\n", BN_bn2hex(rocket->a));
     printf("k:\t\t%s\n", BN_bn2hex(rocket->k));
     printf("buffer_size:\t%d\n", rocket->buffer_size);
+    printf("lasthbtime:\t%u\n", rocket->lasthbtime);
     printf("------------------\n");
 }
