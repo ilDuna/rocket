@@ -386,7 +386,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
             return -1;
 
         struct timeval tv;
-        tv.tv_sec = 5;
+        tv.tv_sec = ROCK_CTRLTIMEOUT;
         setsockopt(ctrlsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
         setsockopt(ctrlsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
