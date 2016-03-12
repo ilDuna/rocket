@@ -70,7 +70,7 @@ void *rocket_tcp_task_open(void *arg) {
     }
     int recvbuffer = ROCK_TCP_RCVBUF;
     int sendbuffer = ROCK_TCP_SNDBUF;
-    int keepalive = 0;
+    int keepalive = 1;
     setsockopt(activetcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
     setsockopt(activetcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
     setsockopt(activetcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
@@ -460,7 +460,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
             return -1;
         int recvbuffer = ROCK_TCP_RCVBUF;
         int sendbuffer = ROCK_TCP_SNDBUF;
-        int keepalive = 0;
+        int keepalive = 1;
         setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
