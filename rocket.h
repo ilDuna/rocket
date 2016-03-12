@@ -14,14 +14,16 @@
 #define ROCK_TCP_SNDBUF     64000
 #define ROCK_HB_RATE        15
 #define ROCK_NET_CHECK      30
+#define ROCK_HB_MAXLOSS     4
 
 typedef enum {SERVER, CLIENT} rocket_role;
-typedef enum {CONNECTED, SUSPENDED, CLOSED} rocket_state;
+typedef enum {CONNECTED, AVAILABLE, SUSPENDED, CLOSED} rocket_state;
 typedef struct rocket_t {
     rocket_role role;       /* server or client rocket */
     uint16_t cid;           /* connection identifier */
     BIGNUM* a;              /* private key */
     BIGNUM* k;              /* shared private key */
+    BIGNUM* challenge;      /* challenge-response for reconnection */
     rocket_state state;     /* current state */
     uint32_t sd;            /* tcp socket descriptor */
     uint16_t port;          /* tcp port */

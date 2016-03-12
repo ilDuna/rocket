@@ -62,10 +62,15 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
         rocket_itobytes(pkt->cid, bytes+1);
         bzero(bytes+3, ROCK_CTRLPKTSIZE-3);
     }
-    else if (pkt->type == 6 || pkt->type == 7) {
+    else if (pkt->type == 6) {
         rocket_stobytes(pkt->type, bytes);
         BN_bn2bin(pkt->k, bytes+1);
         bzero(bytes+1+ROCK_DH_BYTE, ROCK_CTRLPKTSIZE-1-ROCK_DH_BYTE);
+    }
+    else if (pkt->type == 7) {
+        rocket_stobytes(pkt->type, bytes);
+        rocket_itobytes(pkt->cid, bytes+1);
+        BN_bn2bin(pkt->k, bytes+3);
     }
     else if (pkt->type == 100 || pkt->type == 200) {
         rocket_stobytes(pkt->type, bytes);
@@ -100,8 +105,12 @@ rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     else if (pkt->type == 5) {
         pkt->cid = rocket_bytestoi(bytes+1);
     }
-    else if (pkt->type == 6 || pkt->type == 7) {
+    else if (pkt->type == 6) {
         BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
+    }
+    else if (pkt->type == 7) {
+        pkt->cid = rocket_bytestoi(bytes+1);
+        BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
     }
     else if (pkt->type == 100 || pkt->type == 200) {
         
