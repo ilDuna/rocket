@@ -99,7 +99,8 @@ void *rocket_ctrl_listen(void *arg) {
         printf("[server]\tctrl socket creation error.\n");
     int optval = 1;
     struct timeval tv;
-    tv.tv_sec = 5;
+    tv.tv_sec = ROCK_CTRLTIMEOUT;
+    tv.tv_usec = 0;
     setsockopt(ctrlsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     setsockopt(ctrlsock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
     struct sockaddr_in serveraddr;
@@ -469,6 +470,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
 
         struct timeval tv;
         tv.tv_sec = ROCK_CTRLTIMEOUT;
+        tv.tv_usec = 0;
         setsockopt(ctrlsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
         setsockopt(ctrlsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -583,6 +585,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
 
         struct timeval tv;
         tv.tv_sec = ROCK_CTRLTIMEOUT;
+        tv.tv_usec = 0;
         setsockopt(ctrlsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
         setsockopt(ctrlsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
