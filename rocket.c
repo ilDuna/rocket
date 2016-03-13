@@ -12,10 +12,11 @@
 static const char *P = "DC04EB6EB146437F17F6422B78DE6F7B"; /* 128-bit prime */
 static const char *G = "03";
 
-/*
- *  Server
- */
+/********************************************/
+/************* SERVER FUNCTIONS *************/
+/********************************************/
 
+/* used to pass arguments to threads */
 struct thread_arg {
     rocket_list_node **head;
     pthread_mutex_t *lock;
@@ -24,6 +25,9 @@ struct thread_arg {
     int ctrlsock;
 };
 
+/* open a tcp socket and wait for a connection, then save
+ * the socket file descriptor and put the rocket state to
+ * connected */
 void *rocket_tcp_task_open(void *arg) {
     rocket_list_node **head = ((struct thread_arg *)arg)->head;
     pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
@@ -41,8 +45,10 @@ void *rocket_tcp_task_open(void *arg) {
         printf("[server]\ttcp socket [%d] creation error.\n", port);
         return NULL;
     }
+    /* enable SO_REUSEADDR option on the tcp socket */
     int optval = 1;
     setsockopt(tcpsock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+
     struct sockaddr_in serveraddr;
     bzero((char *)&serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
@@ -69,6 +75,7 @@ void *rocket_tcp_task_open(void *arg) {
         printf("[server]\ttcp socket [%d] accept error.\n", port);
         return NULL;
     }
+    /* set SEND and RECV TIMEOUT and enable KEEPALIVE option */
     int recvbuffer = ROCK_TCP_RCVBUF;
     int sendbuffer = ROCK_TCP_SNDBUF;
     int keepalive = 1;
@@ -76,6 +83,8 @@ void *rocket_tcp_task_open(void *arg) {
     setsockopt(activetcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
     setsockopt(activetcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
 
+    /* save current active tcp socket, set the rocket to connected
+     * and set tcp_task flag to 0 (aka task finished) */
     rocket->sd = activetcpsock;
     rocket->state = CONNECTED;
     rocket->tcp_task = 0;
@@ -83,12 +92,29 @@ void *rocket_tcp_task_open(void *arg) {
     //TODO: signal anyone?
     printf("[server]\ttcp socket on port %d is CONNECTED w/ rocket session cid %d.\n", port, rocket->cid);
     rocket_list_print_item(rocket);
+    /* close the listening socket (not the active socket!) */
     int close_ret = close(tcpsock);
     if (close_ret < 0)
         printf("[server]\tfailed close on tcp socket file descriptor.\n");
     return NULL;
 }
 
+/* this thread should run 24/24h.
+ * it starts the udp control socket and responds to requests
+ *
+ * PACKET TYPE  | SENDER    | DESCRIPTION
+ * 1            | client    | request a new socket on a port
+ * 2            | server    | start the DH key exchange routine
+ * 3            | client    | finish the DH key exchange routine
+ * 4            | server    | return the connection identifier (cid)
+ * 5            | client    | start the reconnection routine
+ * 6            | server    | authenticate the client w/ a challenge
+ * 7            | client    | complete authentication w/ the response
+ * 200          | server    | generic success packet
+ * 100          | server    | generic error packet
+ * 50           | client    | heartbeat packet
+ *
+ * */
 void *rocket_ctrl_listen(void *arg) {
     rocket_list_node **head = ((struct thread_arg *)arg)->head;
     pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
@@ -98,12 +124,14 @@ void *rocket_ctrl_listen(void *arg) {
     int ctrlsock = socket(AF_INET, SOCK_DGRAM, 0);
     if (ctrlsock < 0)
         printf("[server]\tctrl socket creation error.\n");
+    /* set the SEND timeout (the RECV is by default 0) and the REUSEADDR option */
     int optval = 1;
     struct timeval tv;
     tv.tv_sec = ROCK_CTRLTIMEOUT;
     tv.tv_usec = 0;
     setsockopt(ctrlsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     setsockopt(ctrlsock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
+    
     struct sockaddr_in serveraddr;
     bzero((char *)&serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
@@ -113,31 +141,40 @@ void *rocket_ctrl_listen(void *arg) {
     if (bind_ret < 0)
         printf("[server]\tctrl socket binding error.\n");
     unsigned int clientlen;
-    unsigned char ctrlbuf[ROCK_CTRLPKTSIZE];
     struct sockaddr_in clientaddr;
     clientlen = sizeof(clientaddr);
+    unsigned char ctrlbuf[ROCK_CTRLPKTSIZE];    /* we put here the received packet and the
+                                                 * serialized one ready to send */
+    /* start of the main loop: receive packet --> do things --> answer */
     while(1) {
-        bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        bzero(ctrlbuf, ROCK_CTRLPKTSIZE);       /* clean up the recv/send buffer */
         int recv_ret = recvfrom(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&clientaddr, &clientlen);
         if (recv_ret < ROCK_CTRLPKTSIZE) {
             printf("[server]\tctrl socket recv error.\n");
             continue;
         }
+        /* initialize the packet object that we will receive
+         * and the packet object we will send as response */
         rocket_ctrl_pkt *recvpkt = rocket_deserialize_ctrlpkt(ctrlbuf);
         rocket_ctrl_pkt *sendpkt = malloc(sizeof(rocket_ctrl_pkt));
         sendpkt->k = BN_new();
 
+        /* request to create a new socket. it contains:
+         * the tcp port and the client tcp receive buffer size */
         if (recvpkt->type == 1) {
             pthread_mutex_lock(lock);
             rocket_t *rocket = rocket_list_findbyport(*head, recvpkt->port);
             pthread_mutex_unlock(lock);
-            if (rocket == 0)
+            if (rocket == 0)            /* the server does not have a record for a rocket on this port */
                 sendpkt->type = 100;
-            else if (rocket->state == CONNECTED)
+            else if (rocket->state == CONNECTED)    /* ops, the requested rocket is already connected */
                 sendpkt->type = 100;
             else {
+                /* set the rocket inflight buffer size as the sum of the
+                 * tcp send buffer size and the client tcp recv buffer */
                 rocket->buffer_size = recvpkt->buffer + ROCK_TCP_SNDBUF;
-                BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* random private key a */
+                /* start the Diffie-Hellman key exchange algorithm */
+                BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* generate a random private key a */
                 BN_CTX *ctx = BN_CTX_new();
                 BIGNUM *g_bn = BN_new();
                 BIGNUM *p_bn = BN_new();
@@ -159,15 +196,18 @@ void *rocket_ctrl_listen(void *arg) {
                 continue;
             }
         }
+        /* client continues Diffie-Hellman key exchange algorithm.
+         * the packet contains the tcp port and B (see DH) */
         else if (recvpkt->type == 3) {
             pthread_mutex_lock(lock);
             rocket_t *rocket = rocket_list_findbyport(*head, recvpkt->port);
             pthread_mutex_unlock(lock);
             if (rocket == 0)
                 sendpkt->type = 100;
-            else if (rocket->state == CONNECTED || rocket->state == SUSPENDED)
+            else if (rocket->state == CONNECTED || rocket->state == SUSPENDED)  /* ops, you should not be here! */
                 sendpkt->type = 100;
             else {
+                /* finish the Diffie-Hellman routine and store the shared private key k */
                 BN_CTX *ctx = BN_CTX_new();
                 BIGNUM *g_bn = BN_new();
                 BIGNUM *p_bn = BN_new();
@@ -180,8 +220,9 @@ void *rocket_ctrl_listen(void *arg) {
 
                 sendpkt->type = 4;
                 sendpkt->cid = rocket->cid;
-                sendpkt->buffer = ROCK_TCP_RCVBUF;
+                sendpkt->buffer = ROCK_TCP_RCVBUF;      /* send to the client the server tcp recv buffer size */
 
+                /* start the thread which will wait for the tcp connection */
                 pthread_t tid_tcpopen;
                 struct thread_arg *arg = malloc(sizeof(struct thread_arg));
                 arg->head = head;
@@ -199,6 +240,7 @@ void *rocket_ctrl_listen(void *arg) {
                 continue;
             }
         }
+        /* reconnection routine, the packet contains the cid of the rocket to reconnect */
         else if (recvpkt->type == 5) {
             pthread_mutex_lock(lock);
             rocket_t *rocket = rocket_list_find(*head, recvpkt->cid);
@@ -207,8 +249,8 @@ void *rocket_ctrl_listen(void *arg) {
                 sendpkt->type = 100;
             else {
                 sendpkt->type = 6;
-                BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);                  /* random challenge for authenticate client */
-                sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge into packet to send */
+                BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);      /* random challenge to authenticate the client */
+                sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge inside packet to send */
             }
 
             bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
@@ -220,6 +262,7 @@ void *rocket_ctrl_listen(void *arg) {
             }
 
         }
+        /* finish the reconnection routine */
         else if (recvpkt->type == 7) {
             pthread_mutex_lock(lock);
             rocket_t *rocket = rocket_list_find(*head, recvpkt->cid);
@@ -235,6 +278,7 @@ void *rocket_ctrl_listen(void *arg) {
                 if (BN_cmp(recvpkt->k, response) == 0) {      /* check if calculated response is equal to the received one */
                     sendpkt->type = 200;
 
+                    /* start the thread which will wait for the new tcp connection */
                     pthread_t tid_tcpopen;
                     struct thread_arg *arg = malloc(sizeof(struct thread_arg));
                     arg->head = head;
@@ -258,6 +302,7 @@ void *rocket_ctrl_listen(void *arg) {
                 continue;
             }
         }
+        /* heartbeat packet received, update rocket state */
         else if (recvpkt->type == 50) {
             pthread_mutex_lock(lock);
             rocket_t *rocket = rocket_list_find(*head, recvpkt->cid);
@@ -265,6 +310,7 @@ void *rocket_ctrl_listen(void *arg) {
             if (rocket == 0)
                 sendpkt->type = 100;
             else {
+                /* get the current time in seconds and update lasthbtime */
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
                 rocket->lasthbtime = tv.tv_sec;
@@ -294,6 +340,10 @@ void *rocket_ctrl_listen(void *arg) {
     return NULL;
 }
 
+/* this thread should run 24/24h.
+ * every ROCK_NET_CHECK seconds it checks last heartbeat timestamp
+ * for every rocket. If it's passed more than ROCK_HB_RATE*ROCK_HB_MAXLOSS
+ * the rocket state is set to SUSPENDED and the tcp socket is closed */
 void *rocket_network_monitor(void *arg) {
     rocket_list_node **head = ((struct thread_arg *)arg)->head;
     pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
@@ -336,6 +386,7 @@ void *rocket_network_monitor(void *arg) {
     return NULL;
 }
 
+/* start control server thread and network monitor thread */
 int rocket_ctrl_server(rocket_list_node **head, pthread_mutex_t *lock) {
     pthread_t tid_listen, tid_network;
     struct thread_arg *arg = malloc(sizeof(struct thread_arg));
@@ -343,21 +394,23 @@ int rocket_ctrl_server(rocket_list_node **head, pthread_mutex_t *lock) {
     arg->lock = lock;
     pthread_create(&tid_listen, NULL, rocket_ctrl_listen, arg);
     pthread_create(&tid_network, NULL, rocket_network_monitor, arg);
-    //TODO: remove joins. Leave it here just for debug purpose
+                                        //TODO: remove joins. Leave it here just for debug purpose
     pthread_join(tid_listen, NULL);
     //pthread_join(tid_network, NULL);
     return 0;
 }
 
+/* create a new rocket for the selected port and return the cid. 
+ * leave it in the CLOSED state until a client will connect */
 uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *lock) {
+    /* first of all, check if a rocket for that port already exists */
     pthread_mutex_lock(lock);
     rocket_t *rocket = rocket_list_findbyport(*head, port);
     pthread_mutex_unlock(lock);
     if (rocket != 0)
         return rocket->cid;
-    /* TODO: check if port is used by other apps */
+    //TODO: check if port is used by other apps
     rocket = malloc(sizeof(rocket_t));
-    
     rocket->role = SERVER;
     rocket->state = CLOSED;
     rocket->sd = 0;
@@ -367,9 +420,11 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
     rocket->k = BN_new();
     rocket->challenge = BN_new();
     rocket->lasthbtime = 0;
+    /* generate a random connection identifier (cid) for the rocket
+     * but first check if it already exists! :) */
     int cid_decided = 0;
     uint16_t cid = 0;
-    srand(time(NULL));
+    srand(time(NULL));  /* seed the random generator */
     while (cid_decided == 0) {
         cid = (uint16_t)rand() % 65535;
         rocket_t *tmp = rocket_list_find(*head, cid);
@@ -379,16 +434,19 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
     rocket->cid = cid;
 
     pthread_mutex_lock(lock);
-    rocket_list_insert(head, rocket, rocket->cid);
+    rocket_list_insert(head, rocket, rocket->cid); /* insert the rocket into the list */
     pthread_mutex_unlock(lock);
-    return 0;
+    return cid;
 }
 
 
-/*
- *  Client
- */
+/********************************************/
+/************* CLIENT FUNCTIONS *************/
+/********************************************/
 
+/* this thread should run until the client is on.
+ * it detects link availability sending heartbeats packets
+ * every ROCK_HB_RATE seconds and eventually starts the reconnection */
 void *rocket_client_network_monitor(void *arg) {
     rocket_list_node **head = ((struct thread_arg *)arg)->head;
     pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
@@ -406,9 +464,11 @@ void *rocket_client_network_monitor(void *arg) {
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_port = htons(ROCK_UDPPORT);
     inet_pton(AF_INET, (const char *)rocket->serveraddr, &serveraddr.sin_addr);
+
     while (1) {
         unsigned char ctrlbuf[ROCK_CTRLPKTSIZE];
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        /* prepare the heartbeat packet */
         rocket_ctrl_pkt pkt_hb;
         pkt_hb.type = 50;
         pkt_hb.cid = cid;
@@ -417,21 +477,22 @@ void *rocket_client_network_monitor(void *arg) {
         if (send_50 != ROCK_CTRLPKTSIZE) {
             /* this section should not be called... */
             //rocket->state = SUSPENDED;
-            //TODO: SIGNAL ANYONE????? ---------------------
             //printf("[client]\trocket %d is SUSPENDED.\n", rocket->cid);
         }
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        /* wait for an heartbeat response. After the recv timeout the heartbeat is missed */
         int recv_hbresp = recv(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0);
+        /* get the current time in seconds */
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        if (recv_hbresp < ROCK_CTRLPKTSIZE) {
+        if (recv_hbresp < ROCK_CTRLPKTSIZE) {   /* no heartbeat response received before timeout, missed! */
             printf("[client]\trocket %d missed heartbeat.\n", rocket->cid);
             if (rocket->lasthbtime != 0 && 
                 tv.tv_sec - rocket->lasthbtime > ROCK_HB_RATE * ROCK_HB_MAXLOSS) {
 
                 rocket->state = SUSPENDED;
+                close(rocket->sd);  /* close the current tcp socket */
 
-                close(rocket->sd);
                 //TODO: SIGNAL ANYONE????? ---------------------
                 printf("[client]\trocket %d is SUSPENDED.\n", rocket->cid);
             }
@@ -464,12 +525,15 @@ void *rocket_client_network_monitor(void *arg) {
     return NULL;
 }
 
+/* connection and reconnection routines */
 int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock) {
+    /* connection routine */
     if (reconnect == 0) {
         int ctrlsock = socket(AF_INET, SOCK_DGRAM, 0);
         if (ctrlsock == -1)
             return -1;
 
+        /* set tcp SEND and RECV buffer size */
         struct timeval tv;
         tv.tv_sec = ROCK_CTRLTIMEOUT;
         tv.tv_usec = 0;
@@ -483,6 +547,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         unsigned char ctrlbuf[ROCK_CTRLPKTSIZE];
 
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        /* prepare the rocket request packet */
         rocket_ctrl_pkt pkt_1;
         pkt_1.type = 1;
         pkt_1.port = port;
@@ -504,7 +569,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         pkt_3.k = BN_new();
         BIGNUM *k = BN_new();
         BIGNUM *b = BN_new();
-        BN_rand(b, ROCK_DH_BIT, 0, 0);              /* random private key b */
+        BN_rand(b, ROCK_DH_BIT, 0, 0);              /* generate the random private key b */
         BN_CTX *ctx = BN_CTX_new();
         BIGNUM *g_bn = BN_new();
         BIGNUM *p_bn = BN_new();
@@ -534,15 +599,18 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         uint16_t cid = pkt_4->cid;
         uint32_t buffer_size = pkt_4->buffer;
 
+        /* server is now ready to accept the tcp connection, start the connection */
         int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpsock < 0)
             return -1;
+        /* set the SEND and RECV buffer and enable the KEEPALIVE option */
         int recvbuffer = ROCK_TCP_RCVBUF;
         int sendbuffer = ROCK_TCP_SNDBUF;
         int keepalive = 1;
         setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
         serveraddr_tcp.sin_port = htons(port);
@@ -551,6 +619,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         if (connect_ret < 0)
             return -1;
 
+        /* create the rocket record and set to CONNECTED state */
         rocket_t *rocket = malloc(sizeof(rocket_t));
         rocket->role = CLIENT;
         rocket->cid = cid;
@@ -564,9 +633,10 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket->serveraddr = addr;
 
         pthread_mutex_lock(lock);
-        rocket_list_insert(head, rocket, cid);
+        rocket_list_insert(head, rocket, cid);  /* insert it into the list */
         pthread_mutex_unlock(lock);
 
+        /* start the client network monitor thread */
         pthread_t tid_netmonitor;
         struct thread_arg *arg = malloc(sizeof(struct thread_arg));
         arg->head = head;
@@ -580,11 +650,13 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         free(pkt_4);
         return 0;
     }
+    /* reconnection routine */
     else if (reconnect == 1) {
         int ctrlsock = socket(AF_INET, SOCK_DGRAM, 0);
         if (ctrlsock == -1)
             return -1;
 
+        /* set tcp SEND and RECV buffer size */
         struct timeval tv;
         tv.tv_sec = ROCK_CTRLTIMEOUT;
         tv.tv_usec = 0;
@@ -604,6 +676,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
             return -1;
 
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
+        /* prepare the rocket reconnection request packet */
         rocket_ctrl_pkt pkt_5;
         pkt_5.type = 5;
         pkt_5.cid = rocket->cid;
@@ -621,6 +694,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
             //      so we might need to initialize a NEW rocket connect!
             return -1;
         }
+        /* complete the client authentication responding to the challenge */
         rocket_ctrl_pkt pkt_7;
         pkt_7.type = 7;
         pkt_7.cid = rocket->cid;
@@ -645,16 +719,18 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         if (pkt_6->type == 100)
             return -1;
 
-        /* we can reconnect the tcp socket */
+        /* we can now reconnect the tcp socket */
         int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpsock < 0)
             return -1;
+        /* set tcp SEND and RECV buffer and enable KEEPALIVE option */
         int recvbuffer = ROCK_TCP_RCVBUF;
         int sendbuffer = ROCK_TCP_SNDBUF;
         int keepalive = 1;
         setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
         setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
         serveraddr_tcp.sin_port = htons(port);
@@ -663,10 +739,10 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         if (connect_ret < 0)
             return -1;
 
+        /* set the rocket state to CONNECTED and save the socket file descriptor */
         rocket->state = CONNECTED;
         rocket->sd = tcpsock;
         //TODO: SIGNAL ANYONE??????!???????
-
 
         return 0;
     }
@@ -674,6 +750,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         return -1;
 }
 
+/* create a new rocket on the client and return the cid received from the server */
 uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock) {
     int retry = ROCK_CTRLMAXRETRY;
     while(retry > 0) {
@@ -689,7 +766,6 @@ uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthre
     rocket_t *rocket = rocket_list_findbyport(*head, port);
     pthread_mutex_unlock(lock);
     printf("[client]\trocket established at %s:%d.\n", addr, port);
-    /* start thread to manage heartbeats and connection recovery */
     return rocket->cid;
 }
 

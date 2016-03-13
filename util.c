@@ -2,6 +2,7 @@
 
 #include <strings.h>
 
+/* convert 32bit unsigned integer to big-endian byte array */
 void rocket_ltobytes(uint32_t l, unsigned char *bytes) {
     bytes[0] = (l >> 24) & 0xFF;
     bytes[1] = (l >> 16) & 0xFF;
@@ -9,15 +10,18 @@ void rocket_ltobytes(uint32_t l, unsigned char *bytes) {
     bytes[3] = l & 0xFF;
 }
 
+/* convert 16bit unsigned integer to big-endian byte array */
 void rocket_itobytes(uint16_t i, unsigned char *bytes) {
     bytes[0] = (i >> 8) & 0xFF;
     bytes[1] = i & 0xFF;
 }
 
+/* convert 8bit unsigned integer to a single byte */
 void rocket_stobytes(uint8_t s, unsigned char *bytes) {
     bytes[0] = s & 0xFF;
 }
 
+/* convert big-endian byte array to 32bit unsigned integer */
 uint32_t rocket_bytestol(unsigned char *bytes) {
     return (uint32_t)bytes[3] |
         (uint32_t)bytes[2] << 8 |
@@ -25,15 +29,18 @@ uint32_t rocket_bytestol(unsigned char *bytes) {
         (uint32_t)bytes[0] << 24;
 }
 
+/* convert big-endian byte array to 16bit unsigned integer */
 uint16_t rocket_bytestoi(unsigned char *bytes) {
     return (uint16_t)bytes[1] |
         (uint16_t)bytes[0] << 8;
 }
 
+/* convert single byte to 8bit unsigned integer */
 uint8_t rocket_bytestos(unsigned char *bytes) {
     return (uint8_t)bytes[0];
 }
 
+/* transform a struct rocket_ctrl_pkt to a byte array */
 void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     if (pkt->type == 1) {
         rocket_stobytes(pkt->type, bytes);
@@ -83,6 +90,7 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     }
 }
 
+/* transform a byte array to a struct rocket_ctrl_pkt */
 rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     rocket_ctrl_pkt *pkt = malloc(sizeof(rocket_ctrl_pkt));
     pkt->k = BN_new();
