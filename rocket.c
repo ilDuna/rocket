@@ -29,12 +29,12 @@ void *rocket_tcp_task_open(void *arg) {
     pthread_mutex_t *lock = ((struct thread_arg *)arg)->lock;
     uint16_t port = ((struct thread_arg *)arg)->port;
 
+    printf("[server]\ttcp connection thread started.\n");
     pthread_mutex_lock(lock);
     rocket_t *rocket = rocket_list_findbyport(*head, port);
     pthread_mutex_unlock(lock);
     if (rocket == 0)
         return NULL;
-
     int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
     if (tcpsock < 0) {
         rocket->tcp_task = 0;
@@ -60,6 +60,7 @@ void *rocket_tcp_task_open(void *arg) {
         printf("[server]\ttcp socket [%d] listen error.\n", port);
         return NULL;
     }
+    printf("[server]\ttcp socket is listening on port %d\n", port);
     struct sockaddr_in clientaddr;
     int clientlen = sizeof(clientaddr);
     int activetcpsock = accept(tcpsock, (struct sockaddr *)&clientaddr, (socklen_t *)&clientlen);
@@ -80,7 +81,7 @@ void *rocket_tcp_task_open(void *arg) {
     rocket->tcp_task = 0;
 
     //TODO: signal anyone?
-    printf("[server]\ttcp socket at port %d CONNECTED at rocket session cid %d.\n", port, rocket->cid);
+    printf("[server]\ttcp socket on port %d is CONNECTED w/ rocket session cid %d.\n", port, rocket->cid);
     rocket_list_print_item(rocket);
     int close_ret = close(tcpsock);
     if (close_ret < 0)
@@ -238,7 +239,7 @@ void *rocket_ctrl_listen(void *arg) {
                     struct thread_arg *arg = malloc(sizeof(struct thread_arg));
                     arg->head = head;
                     arg->lock = lock;
-                    arg->port = recvpkt->port;
+                    arg->port = rocket->port;
                     rocket->tcp_task = 1;
                     pthread_create(&tid_tcpopen, NULL, rocket_tcp_task_open, arg); 
                 }
