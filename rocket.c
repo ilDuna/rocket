@@ -205,6 +205,7 @@ void *rocket_ctrl_listen(void *arg) {
             if (rocket == 0 || (rocket!=0 && rocket->state == CLOSED))
                 sendpkt->type = 100;
             else {
+                sendpkt->type = 6;
                 BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);                  /* random challenge for authenticate client */
                 sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge into packet to send */
             }
@@ -621,6 +622,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         }
         rocket_ctrl_pkt pkt_7;
         pkt_7.type = 7;
+        pkt_7.cid = rocket->cid;
         pkt_7.k = BN_new();
         BN_CTX *ctx = BN_CTX_new();
         BIGNUM *p_bn = BN_new();
