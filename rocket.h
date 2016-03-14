@@ -61,8 +61,8 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
 uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock);
 int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t port, pthread_mutex_t *lock);
 //int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock);
-int rocket_send(rocket_list_node **head, uint16_t cid, void *buffer, uint32_t length, pthread_mutex_t *lock);
-int rocket_recv(rocket_list_node **head, uint16_t cid, void *buffer, pthread_mutex_t *lock);
+int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t length, pthread_mutex_t *lock);
+int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mutex_t *lock);
 
 /* rocket list */
 int rocket_list_insert(rocket_list_node **head, rocket_t *rocket, uint16_t cid);

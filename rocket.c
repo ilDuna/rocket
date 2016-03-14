@@ -399,7 +399,7 @@ int rocket_ctrl_server(rocket_list_node **head, pthread_mutex_t *lock) {
     pthread_create(&tid_listen, NULL, rocket_ctrl_listen, arg);
     pthread_create(&tid_network, NULL, rocket_network_monitor, arg);
                                         //TODO: remove joins. Leave it here just for debug purpose
-    pthread_join(tid_listen, NULL);
+    //pthread_join(tid_listen, NULL);
     //pthread_join(tid_network, NULL);
     return 0;
 }
@@ -790,7 +790,7 @@ uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthre
  * of size 'length' is correctly sent. Returns < 0 if very
  * sad things happen. The length of the message is automatically
  * inserted in a 4 byte header sent before the message. */
-int rocket_send(rocket_list_node **head, uint16_t cid, void *buffer, uint32_t length, pthread_mutex_t *lock) {
+int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t length, pthread_mutex_t *lock) {
     int was_suspended = 0;
 
     pthread_mutex_lock(lock);
@@ -860,7 +860,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, void *buffer, uint32_t le
  * the function will return the length of the message
  * (only the message, without the header).
  * Can return < 0 if sad things happen. */
-int rocket_recv(rocket_list_node **head, uint16_t cid, void *buffer, pthread_mutex_t *lock) {
+int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mutex_t *lock) {
     pthread_mutex_lock(lock);
     rocket_t *rocket = rocket_list_find(*head, cid);
     pthread_mutex_unlock(lock);
@@ -887,7 +887,7 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, void *buffer, pthread_mut
         }
     }
     uint32_t length = rocket_bytestol(header);
-    buffer = malloc(length);        /* allocate memory space for the message content */
+    *buffer = malloc(length);        /* allocate memory space for the message content */
 
     /* now receive the message of length indicated in the header */
     int rcvdbytes = 0;
@@ -896,7 +896,7 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, void *buffer, pthread_mut
             sleep(ROCK_SNDRCV_REFR);
         }
         else {
-            int r = recv(rocket->sd, buffer + rcvdbytes, length - rcvdbytes, 0);
+            int r = recv(rocket->sd, *buffer + rcvdbytes, length - rcvdbytes, 0);
             if (r < 0) {
                 printf("[data]\ttcp recv returned -1: indicating a closed socket or a network failure.\n");
             }
@@ -919,8 +919,10 @@ int main(int argc, char *argv[]) {
         pthread_mutex_t *lock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
-        rocket_client(&head, argv[2], (uint16_t)atoi(argv[3]), lock);
+        uint16_t cid = rocket_client(&head, argv[2], (uint16_t)atoi(argv[3]), lock);
         rocket_list_print(head);
+        
+        rocket_send(&head, cid, "abcabcabcabca", 13, lock);
         sleep(1800); //just for debug sleep for 30min
     }
     else if (argc > 1 && strcmp(argv[1], "-s")==0) {
@@ -928,9 +930,13 @@ int main(int argc, char *argv[]) {
         pthread_mutex_t *lock = malloc(sizeof(pthread_mutex_t));
         pthread_mutex_init(lock, NULL);
         rocket_list_node *head = 0;
-        rocket_server(&head, 125, lock);
-        rocket_server(&head, 126, lock);
+        uint16_t cid = rocket_server(&head, 125, lock);
         rocket_ctrl_server(&head, lock);
+        
+        char *buffer;
+        int length = rocket_recv(&head, cid, &buffer, lock);
+        printf("received %s\n", buffer);
+        sleep(1800); //just for debug sleep for 30min
     } 
     else
         printf("usage: rocket [-c server_ip_address tcp_port] [-s]\n");
