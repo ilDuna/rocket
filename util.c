@@ -67,7 +67,8 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     else if (pkt->type == 5) {
         rocket_stobytes(pkt->type, bytes);
         rocket_itobytes(pkt->cid, bytes+1);
-        bzero(bytes+3, ROCK_CTRLPKTSIZE-3);
+        rocket_ltobytes(pkt->buffer, bytes+3);
+        bzero(bytes+7, ROCK_CTRLPKTSIZE-7);
     }
     else if (pkt->type == 6) {
         rocket_stobytes(pkt->type, bytes);
@@ -78,6 +79,11 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
         rocket_stobytes(pkt->type, bytes);
         rocket_itobytes(pkt->cid, bytes+1);
         BN_bn2bin(pkt->k, bytes+3);
+    }
+    else if (pkt->type == 8) {
+        rocket_stobytes(pkt->type, bytes);
+        rocket_ltobytes(pkt->buffer, bytes+1);
+        bzero(bytes+5, ROCK_CTRLPKTSIZE-5);
     }
     else if (pkt->type == 100 || pkt->type == 200) {
         rocket_stobytes(pkt->type, bytes);
@@ -112,6 +118,7 @@ rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     }
     else if (pkt->type == 5) {
         pkt->cid = rocket_bytestoi(bytes+1);
+        pkt->buffer = rocket_bytestol(bytes+3);
     }
     else if (pkt->type == 6) {
         BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
@@ -119,6 +126,9 @@ rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     else if (pkt->type == 7) {
         pkt->cid = rocket_bytestoi(bytes+1);
         BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
+    }
+    else if (pkt->type == 8) {
+        pkt->buffer = rocket_bytestol(bytes+1);
     }
     else if (pkt->type == 100 || pkt->type == 200) {
         
@@ -233,5 +243,7 @@ void rocket_list_print_item(rocket_t *rocket) {
     printf("k:\t\t%s\n", BN_bn2hex(rocket->k));
     printf("buffer_size:\t%d\n", rocket->buffer_size);
     printf("lasthbtime:\t%u\n", rocket->lasthbtime);
+    printf("dlvdbytes:\t%d\n", rocket->dlvdbytes);
+    printf("rcvdbytes:\t%d\n", rocket->rcvdbytes);
     printf("------------------\n");
 }
