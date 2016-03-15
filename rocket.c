@@ -933,9 +933,11 @@ int main(int argc, char *argv[]) {
         uint16_t cid = rocket_server(&head, 125, lock);
         rocket_ctrl_server(&head, lock);
         
-        char *buffer;
-        int length = rocket_recv(&head, cid, &buffer, lock);
-        printf("received %s\n", buffer);
+        while (1) {
+            char *buffer;
+            int length = rocket_recv(&head, cid, &buffer, lock);
+            printf("received %s\n", buffer);
+        }
         sleep(1800); //just for debug sleep for 30min
     } 
     else
