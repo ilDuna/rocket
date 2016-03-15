@@ -385,8 +385,8 @@ void *rocket_network_monitor(void *arg) {
                     
                     if (node->rocket->state == CONNECTED) {
                         node->rocket->state = SUSPENDED;
+                        shutdown(node->rocket->sd, SHUT_RDWR);    /* shutdown socket and disable send & recv */
                         close(node->rocket->sd);    /* close current tcp socket */
-                        //TODO: signal anyone? ------------------------------------
                     }
                     else {
                         node->rocket->state = SUSPENDED;
@@ -512,6 +512,7 @@ void *rocket_client_network_monitor(void *arg) {
             if (rocket->lasthbtime != 0 && 
                 tv.tv_sec - rocket->lasthbtime > ROCK_HB_RATE * ROCK_HB_MAXLOSS) {
                 rocket->state = SUSPENDED;
+                shutdown(rocket->sd, SHUT_RDWR);    /* shutdown socket and disable send & recv */
                 close(rocket->sd);  /* close the current tcp socket */
 
                 //TODO: SIGNAL ANYONE????? ---------------------
@@ -874,7 +875,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
             }
             int h = send(rocket->sd, header + sentheaderbytes, 4 - sentheaderbytes, flags);
             if (h < 0) {
-                printf("[data]\ttcp send returned -1 while sending the header: \
+                printf("[data]\t\ttcp send returned -1 while sending the header: \
                         indicating a closed socket or a network failure.\n");
             }
             else {
@@ -885,7 +886,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
 
     /* now send the message of length defined in the header */
     int sentbytes = 0;
-    while (sentbytes != length) {
+    while (sentbytes < length) {
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             was_suspended = 1;
             sleep(ROCK_SNDRCV_REFR);
@@ -893,19 +894,22 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
         else {
             if (was_suspended == 1) {               /* rocket resumed after a suspension */
                 sentbytes = rocket->dlvdbytes;      /* restart sending from last byte sent */
+                printf("[data]\t\trecovering rocket_send from byte %d.\n", sentbytes);
                 was_suspended = 0;
             }
             int s = send(rocket->sd, buffer + sentbytes, length - sentbytes, flags);
             if (s < 0) {
-                printf("[data]\ttcp send returned -1: indicating a closed socket or a network failure.\n");
+                //printf("[data]\ttcp send returned -1: indicating a closed socket or a network failure.\n");
             }
             else {
                 sentbytes += s;
-                printf("[data]\tsuccessfully sent %d bytes.\n", sentbytes);
+                //printf("[data]\t\tsuccessfully sent %d bytes.\n", sentbytes);
             }
         }
     }
-    printf("[data]\trocket_send successfully completed: %d bytes sent.\n", sentbytes);
+    printf("[data]\t\trocket_send successfully completed: %d bytes sent.\n", sentbytes);
+    if (sentbytes > length)
+        printf("[data]\t\tWARNING! sent %d bytes instead of %d bytes.\n", sentbytes, length);
     free(header);
     return sentbytes;
 }
@@ -934,7 +938,7 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
         else {
             int h = recv(rocket->sd, header + rcvdheaderbytes, 4 - rcvdheaderbytes, 0);
             if (h < 0) {
-                printf("[data]\ttcp send returned -1 while receiving the header: \
+                printf("[data]\t\ttcp send returned -1 while receiving the header: \
                         indicating a closed socket or a network failure.\n");
             }
             else {
@@ -948,23 +952,25 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
 
     /* now receive the message of length indicated in the header */
     int rcvdbytes = 0;
-    while (rcvdbytes != length) {
+    while (rcvdbytes < length) {
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             sleep(ROCK_SNDRCV_REFR);
         }
         else {
             int r = recv(rocket->sd, *buffer + rcvdbytes, length - rcvdbytes, 0);
             if (r < 0) {
-                printf("[data]\ttcp recv returned -1: indicating a closed socket or a network failure.\n");
+                //printf("[data]\t\ttcp recv returned -1: indicating a closed socket or a network failure.\n");
             }
             else {
                 rcvdbytes += r;
                 rocket->rcvdbytes = rcvdbytes;
-                printf("[data]\tsuccessfully received %d bytes.\n", rcvdbytes);
+                //printf("[data]\t\tsuccessfully received %d bytes.\n", rcvdbytes);
             }
         }
     }
-    printf("[data]\trocket_recv successfully completed: %d bytes received.\n", rcvdbytes);
+    printf("[data]\t\trocket_recv successfully completed: %d bytes received.\n", rcvdbytes);
+    if (rcvdbytes > length)
+        printf("[data]\t\tWARNING! received %d bytes instead of %d bytes.\n", rcvdbytes, length);
     free(header);
     return rcvdbytes;
 }
@@ -993,7 +999,6 @@ int main(int argc, char *argv[]) {
         while (1) {
             char *buffer;
             int length = rocket_recv(&head, cid, &buffer, lock);
-            printf("received %s\n", buffer);
         }
         sleep(1800); //just for debug sleep for 30min
     } 
