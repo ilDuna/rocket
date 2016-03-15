@@ -75,13 +75,20 @@ void *rocket_tcp_task_open(void *arg) {
         printf("[server]\ttcp socket [%d] accept error.\n", port);
         return NULL;
     }
-    /* set SEND and RECV TIMEOUT and enable KEEPALIVE option */
+    /* set the SEND and RECV buffer and TIMEOUT (to 0) and enable the KEEPALIVE option */
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
     int recvbuffer = ROCK_TCP_RCVBUF;
     int sendbuffer = ROCK_TCP_SNDBUF;
     int keepalive = 1;
-    setsockopt(activetcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
-    setsockopt(activetcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
-    setsockopt(activetcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+    int s_1 = setsockopt(activetcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
+    int s_2 = setsockopt(activetcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
+    int s_3 = setsockopt(activetcpsock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    int s_4 = setsockopt(activetcpsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    int s_5 = setsockopt(activetcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+    if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
+        printf("[server]\terror on setsockopt on tcp socket.\n");
 
     /* save current active tcp socket, set the rocket to connected
      * and set tcp_task flag to 0 (aka task finished) */
@@ -609,13 +616,20 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpsock < 0)
             return -1;
-        /* set the SEND and RECV buffer and enable the KEEPALIVE option */
+        /* set the SEND and RECV buffer and TIMEOUT (to 0) and enable the KEEPALIVE option */
+        struct timeval tvto;
+        tvto.tv_sec = 0;
+        tvto.tv_usec = 0;
         int recvbuffer = ROCK_TCP_RCVBUF;
         int sendbuffer = ROCK_TCP_SNDBUF;
         int keepalive = 1;
-        setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
-        setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
-        setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+        int s_1 = setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
+        int s_2 = setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
+        int s_3 = setsockopt(tcpsock, SOL_SOCKET, SO_SNDTIMEO, &tvto, sizeof(tvto));
+        int s_4 = setsockopt(tcpsock, SOL_SOCKET, SO_RCVTIMEO, &tvto, sizeof(tvto));
+        int s_5 = setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+        if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
+            printf("[client]\terror on setsockopt on tcp socket.\n");
 
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
@@ -735,13 +749,20 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
         if (tcpsock < 0)
             return -1;
-        /* set tcp SEND and RECV buffer and enable KEEPALIVE option */
+        /* set the SEND and RECV buffer and TIMEOUT (to 0) and enable the KEEPALIVE option */
+        struct timeval tvto;
+        tvto.tv_sec = 0;
+        tvto.tv_usec = 0;
         int recvbuffer = ROCK_TCP_RCVBUF;
         int sendbuffer = ROCK_TCP_SNDBUF;
         int keepalive = 1;
-        setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
-        setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
-        setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+        int s_1 = setsockopt(tcpsock, SOL_SOCKET, SO_RCVBUF, &recvbuffer, sizeof(recvbuffer));
+        int s_2 = setsockopt(tcpsock, SOL_SOCKET, SO_SNDBUF, &sendbuffer, sizeof(sendbuffer));
+        int s_3 = setsockopt(tcpsock, SOL_SOCKET, SO_SNDTIMEO, &tvto, sizeof(tvto));
+        int s_4 = setsockopt(tcpsock, SOL_SOCKET, SO_RCVTIMEO, &tvto, sizeof(tvto));
+        int s_5 = setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+        if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
+            printf("[client]\terror on setsockopt on tcp socket.\n");
 
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
