@@ -90,6 +90,15 @@ void *rocket_tcp_task_open(void *arg) {
     if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
         printf("[server]\terror on setsockopt on tcp socket.\n");
 
+    /* set SO_NOSIGPIPE option for the socket, ONLY ON OSX
+        on Linux we already use the MSG_NOSIGNAL flag in the send call. */
+#ifdef SO_NOSIGPIPE
+        int nosigpipe = 1;
+        int s_6 = setsockopt(activetcpsock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&nosigpipe, sizeof(int));
+        if (s_6 < 0)
+            printf("[server]\terror on setsockopt SO_NOSIGPIPE on tcp socket.\n");
+#endif
+
     /* save current active tcp socket, set the rocket to connected
      * and set tcp_task flag to 0 (aka task finished) */
     rocket->sd = activetcpsock;
@@ -502,7 +511,6 @@ void *rocket_client_network_monitor(void *arg) {
             printf("[client]\trocket %d missed heartbeat.\n", rocket->cid);
             if (rocket->lasthbtime != 0 && 
                 tv.tv_sec - rocket->lasthbtime > ROCK_HB_RATE * ROCK_HB_MAXLOSS) {
-
                 rocket->state = SUSPENDED;
                 close(rocket->sd);  /* close the current tcp socket */
 
@@ -531,7 +539,6 @@ void *rocket_client_network_monitor(void *arg) {
             rocket->state = CONNECTED;
             printf("[client]\trocket %d still CONNECTED.\n", rocket->cid);
         }
-
         sleep(ROCK_HB_RATE);
     }
 
@@ -630,6 +637,15 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         int s_5 = setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
         if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
             printf("[client]\terror on setsockopt on tcp socket.\n");
+        
+        /* set SO_NOSIGPIPE option for the socket, ONLY ON OSX
+        on Linux we already use the MSG_NOSIGNAL flag in the send call. */
+#ifdef SO_NOSIGPIPE
+        int nosigpipe = 1;
+        int s_6 = setsockopt(tcpsock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&nosigpipe, sizeof(int));
+        if (s_6 < 0)
+            printf("[client]\terror on setsockopt SO_NOSIGPIPE on tcp socket.\n");
+#endif
 
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
@@ -764,6 +780,15 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         if (s_1<0 || s_2<0 || s_3<0 || s_4<0 || s_5<0)
             printf("[client]\terror on setsockopt on tcp socket.\n");
 
+        /* set SO_NOSIGPIPE option for the socket, ONLY ON OSX
+        on Linux we already use the MSG_NOSIGNAL flag in the send call. */
+#ifdef SO_NOSIGPIPE
+        int nosigpipe = 1;
+        int s_6 = setsockopt(tcpsock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&nosigpipe, sizeof(int));
+        if (s_6 < 0)
+            printf("[client]\terror on setsockopt SO_NOSIGPIPE on tcp socket.\n");
+#endif
+
         struct sockaddr_in serveraddr_tcp;
         serveraddr_tcp.sin_family = AF_INET;
         serveraddr_tcp.sin_port = htons(port);
@@ -824,6 +849,17 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
     unsigned char *header = malloc(4);
     rocket_ltobytes(length, header);
 
+    /* IMPORTANT!! here we set the flags for the send call.
+    flag MSG_NOSIGNAL (since Linux 2.2):
+    Requests not to send SIGPIPE on errors on stream oriented sockets 
+    when the other end breaks the connection. The EPIPE error is still returned. 
+    THIS FLAG IS NOT SUPPORTED ON OSX, so on that we use instead the SO_NOSIGPIPE
+    option with the setsockopt command. */
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags = MSG_NOSIGNAL;
+#endif
+
     /* first send the 4 byte header */
     int sentheaderbytes = 0;
     while (sentheaderbytes != 4) {
@@ -836,7 +872,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                 sentheaderbytes = rocket->dlvdbytes;
                 was_suspended = 0;
             }
-            int h = send(rocket->sd, header + sentheaderbytes, 4 - sentheaderbytes, 0);
+            int h = send(rocket->sd, header + sentheaderbytes, 4 - sentheaderbytes, flags);
             if (h < 0) {
                 printf("[data]\ttcp send returned -1 while sending the header: \
                         indicating a closed socket or a network failure.\n");
@@ -859,7 +895,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                 sentbytes = rocket->dlvdbytes;      /* restart sending from last byte sent */
                 was_suspended = 0;
             }
-            int s = send(rocket->sd, buffer + sentbytes, length - sentbytes, 0);
+            int s = send(rocket->sd, buffer + sentbytes, length - sentbytes, flags);
             if (s < 0) {
                 printf("[data]\ttcp send returned -1: indicating a closed socket or a network failure.\n");
             }
