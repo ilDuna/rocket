@@ -55,6 +55,14 @@ int ifb_pop(ifbuffer_t *ifb, int items) {
 	return 0;
 }
 
+unsigned char *ifb_getlastpushed(ifbuffer_t *ifb, int items) {
+	if (items > ifb->items) {
+		return NULL;
+		//??
+	}
+	return ifb->buffer + ifb->items - items;
+}
+
 void ifb_free(ifbuffer_t *ifb) {
 	free(ifb->buffer);
 	free(ifb);
