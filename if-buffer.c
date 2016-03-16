@@ -46,7 +46,8 @@ int ifb_pop(ifbuffer_t *ifb, int items) {
 	bzero(ifb->buffer, items);
 	ifb->items -= items;
 	int new_pos = 0;
-	for (int cur_pos = items; cur_pos < ifb->length; cur_pos++) {
+	int cur_pos = items;
+	for (cur_pos = items; cur_pos < ifb->length; cur_pos++) {
 		ifb->buffer[new_pos] = ifb->buffer[cur_pos];
 		new_pos++;
 	}
@@ -61,7 +62,8 @@ void ifb_free(ifbuffer_t *ifb) {
 
 void ifb_print(ifbuffer_t *ifb) {
 	printf("in-flight buffer (size %d, items %d):\n", ifb->length, ifb->items);
-	for (int i = 0; i < ifb->length; i++) {
+	int i = 0;
+	for (i = 0; i < ifb->length; i++) {
 		if (ifb->buffer[i] == 0)
 			printf("_ ");
 		else
