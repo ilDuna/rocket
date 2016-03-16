@@ -1,3 +1,5 @@
+#include "if-buffer.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -34,10 +36,10 @@ typedef struct rocket_t {
     uint16_t port;          /* tcp port */
     uint8_t tcp_task;       /* 1 if the tcp re/connection thread
                             has been started, 0 otherwise */
-    uint32_t buffer_size;   /* inflight buffer size */
-    uint32_t dlvdbytes;     /* bytes delivered (!= sent) within
-                            last rocket_send before rocket suspension */
-    uint32_t rcvdbytes;     /* bytes received within last rocket_recv */
+    ifbuffer_t *ifb;        /* in-flight buffer */
+    uint32_t sentcounter;   /* sent bytes counter (needed for connection recovery) */
+    uint32_t rcvdcounter;   /* rcvd bytes counter (needed for connection recovery) */
+    uint32_t tosendbytes;   /* bytes of the inflight buffer to send again */
     pthread_t cnet_monitor; /* client network monitor */
     uint32_t lasthbtime;    /* last valid heartbeat timestamp in s */
     char* serveraddr;       /* server ip address */
@@ -78,6 +80,8 @@ uint16_t rocket_bytestoi(unsigned char *bytes);
 uint8_t rocket_bytestos(unsigned char *bytes);
 void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes);
 rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes);
+/* tools */
+uint32_t rocket_mod_diff(uint32_t a, uint32_t b);
 /* debug tools */
 void rocket_list_print(rocket_list_node *head);
 void rocket_list_print_item(rocket_t *rocket);

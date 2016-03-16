@@ -220,6 +220,23 @@ rocket_t *rocket_list_findbyport(rocket_list_node *head, uint16_t port) {
     }
 }
 
+/* calculate the (positive) difference between two unsigned
+ * integer stored as: number % 4.294.967.295 (UINT32_MAX).
+ * this function cannot hold differences greater than that
+ * number. 
+ * difference = a - b */
+uint32_t rocket_mod_diff(uint32_t a, uint32_t b) {
+    if (a > b) {
+        return a - b;
+    }
+    else if (a < b) {
+        return a + (UINT32_MAX - b);
+    }
+    else {
+        return 0;
+    }
+}
+
 void rocket_list_print(rocket_list_node *head) {
     if (head == 0)
         return;
@@ -241,9 +258,9 @@ void rocket_list_print_item(rocket_t *rocket) {
     printf("tcp_task:\t%d\n", rocket->tcp_task);
     printf("a:\t\t%s\n", BN_bn2hex(rocket->a));
     printf("k:\t\t%s\n", BN_bn2hex(rocket->k));
-    printf("buffer_size:\t%d\n", rocket->buffer_size);
     printf("lasthbtime:\t%u\n", rocket->lasthbtime);
-    printf("dlvdbytes:\t%d\n", rocket->dlvdbytes);
-    printf("rcvdbytes:\t%d\n", rocket->rcvdbytes);
+    printf("sentcounter:\t%d\n", rocket->sentcounter);
+    printf("rcvdcounter:\t%d\n", rocket->rcvdcounter);
+    printf("tosendbytes:\t%d\n", rocket->tosendbytes);
     printf("------------------\n");
 }

@@ -187,9 +187,9 @@ void *rocket_ctrl_listen(void *arg) {
             else if (rocket->state == CONNECTED)    /* ops, the requested rocket is already connected */
                 sendpkt->type = 100;
             else {
-                /* set the rocket inflight buffer size as the sum of the
-                 * tcp send buffer size and the client tcp recv buffer */
-                rocket->buffer_size = recvpkt->buffer + ROCK_TCP_SNDBUF;
+                /* initialize the inflight buffer with size given by the sum of
+                 * the local tcp socket SEND buffer and the client RECV buffer */
+                rocket->ifb = ifb_init(recvpkt->buffer + ROCK_TCP_SNDBUF);
                 /* start the Diffie-Hellman key exchange algorithm */
                 BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* generate a random private key a */
                 BN_CTX *ctx = BN_CTX_new();
@@ -265,8 +265,10 @@ void *rocket_ctrl_listen(void *arg) {
             if (rocket == 0 || (rocket!=0 && rocket->state == CLOSED))
                 sendpkt->type = 100;
             else {
-                rocket->dlvdbytes = recvpkt->buffer;    /* store how many bytes the client received
-                                                        within our last rocket_send call */
+                /* receive from the client his received bytes counter, calculate how many
+                bytes we need to resend making the difference with our sent bytes counter. */
+                rocket->tosendbytes = rocket_mod_diff(rocket->sentcounter, recvpkt->buffer);
+
                 sendpkt->type = 6;
                 BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);      /* random challenge to authenticate the client */
                 sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge inside packet to send */
@@ -296,7 +298,7 @@ void *rocket_ctrl_listen(void *arg) {
                 BN_mod_exp(response, rocket->challenge, rocket->k, p_bn, ctx);    /* recalculate response = challenge^K mod p */
                 if (BN_cmp(recvpkt->k, response) == 0) {      /* check if calculated response is equal to the received one */
                     sendpkt->type = 8;
-                    sendpkt->buffer = rocket->rcvdbytes;    /* tell the client how many bytes received within last rocket_recv */
+                    sendpkt->buffer = rocket->rcvdcounter;    /* send to the client our received bytes counter */
 
                     /* start the thread which will wait for the new tcp connection */
                     pthread_t tid_tcpopen;
@@ -440,8 +442,9 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
     rocket->k = BN_new();
     rocket->challenge = BN_new();
     rocket->lasthbtime = 0;
-    rocket->dlvdbytes = 0;
-    rocket->rcvdbytes = 0;
+    rocket->sentcounter = 0;
+    rocket->rcvdcounter = 0;
+    rocket->tosendbytes = 0;
     /* generate a random connection identifier (cid) for the rocket
      * but first check if it already exists! :) */
     int cid_decided = 0;
@@ -665,11 +668,12 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket->state = CONNECTED;
         rocket->sd = tcpsock;
         rocket->port = port;
-        rocket->buffer_size = buffer_size + ROCK_TCP_SNDBUF;
+        rocket->ifb = ifb_init(buffer_size + ROCK_TCP_SNDBUF);
         rocket->lasthbtime = 0;
         rocket->serveraddr = addr;
-        rocket->dlvdbytes = 0;
-        rocket->rcvdbytes = 0;
+        rocket->sentcounter = 0;
+        rocket->rcvdcounter = 0;
+        rocket->tosendbytes = 0;
 
         pthread_mutex_lock(lock);
         rocket_list_insert(head, rocket, cid);  /* insert it into the list */
@@ -719,8 +723,8 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket_ctrl_pkt pkt_5;
         pkt_5.type = 5;
         pkt_5.cid = rocket->cid;
-        pkt_5.buffer = rocket->rcvdbytes;   /* send the server how many bytes were received
-                                            within last rocket_recv call */
+        pkt_5.buffer = rocket->rcvdcounter;   /* send to the server the received bytes counter */
+
         rocket_serialize_ctrlpkt(&pkt_5, ctrlbuf);
         int send_5 = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
         if (send_5 != ROCK_CTRLPKTSIZE)
@@ -759,8 +763,9 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket_ctrl_pkt *pkt_8 = rocket_deserialize_ctrlpkt(ctrlbuf);
         if (pkt_8->type == 100)
             return -1;
-        rocket->dlvdbytes = pkt_8->buffer;   /* store how many bytes the server has correctly received
-                                            from our last rocket_send call */
+        /* server sent his received bytes counter, so we can calculate
+        how many bytes we need to resend to recovery the connection. */
+        rocket->tosendbytes = rocket_mod_diff(rocket->sentcounter, pkt_8->buffer);
 
         /* we can now reconnect the tcp socket */
         int tcpsock = socket(AF_INET, SOCK_STREAM, 0);
@@ -836,7 +841,9 @@ uint16_t rocket_client(rocket_list_node **head, char *addr, uint16_t port, pthre
 /* remains blocked until the message pointed inside 'buffer'
  * of size 'length' is correctly sent. Returns < 0 if very
  * sad things happen. The length of the message is automatically
- * inserted in a 4 byte header sent before the message. */
+ * inserted in a 4 byte header sent before the message. 
+ * Note that by 'correctly sent' we mean 'placed on a network-safe
+ * outgoing queue' such that data will be delivered, sooner or later. */
 int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t length, pthread_mutex_t *lock) {
     int was_suspended = 0;
 
@@ -870,8 +877,25 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
         }
         else {
             if (was_suspended == 1) {
-                sentheaderbytes = rocket->dlvdbytes;
                 was_suspended = 0;
+                /* re-send last rocket->tosendbytes bytes from the in-flight buffer
+                 * without updating the rocket->sentcounter and rocket->tosendbytes */
+                int recoverybytessent = 0;
+                while (recoverybytessent < rocket->tosendbytes) {
+                    int rs = send(rocket->sd, rocket->ifb->buffer + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    if (rs > 0) {
+                        recoverybytessent += rs;
+                    }
+                    else {
+                        was_suspended = 1;
+                        sleep(ROCK_SNDRCV_REFR);
+                        break;
+                    }
+                }
+                if (recoverybytessent == rocket->tosendbytes)
+                    printf("[data]\t\tre-sent last %d bytes to recovery connection.\n", rocket->tosendbytes);
+                else
+                    continue;
             }
             int h = send(rocket->sd, header + sentheaderbytes, 4 - sentheaderbytes, flags);
             if (h < 0) {
@@ -879,6 +903,10 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                         indicating a closed socket or a network failure.\n");
             }
             else {
+                /* update the sent bytes counter and store in a uint32_t variable */
+                rocket->sentcounter = (rocket->sentcounter + h) % UINT32_MAX;
+                /* push those sent bytes inside the inflight buffer */
+                ifb_push(rocket->ifb, (char *)header + sentheaderbytes, h);
                 sentheaderbytes += h;
             }
         }
@@ -893,17 +921,37 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
         }
         else {
             if (was_suspended == 1) {               /* rocket resumed after a suspension */
-                sentbytes = rocket->dlvdbytes;      /* restart sending from last byte sent */
-                printf("[data]\t\trecovering rocket_send from byte %d.\n", sentbytes);
                 was_suspended = 0;
+                
+                /* re-send last rocket->tosendbytes bytes from the in-flight buffer
+                 * without updating the rocket->sentcounter and rocket->tosendbytes */
+                int recoverybytessent = 0;
+                while (recoverybytessent < rocket->tosendbytes) {
+                    int rs = send(rocket->sd, rocket->ifb->buffer + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    if (rs > 0) {
+                        recoverybytessent += rs;
+                    }
+                    else {
+                        was_suspended = 1;
+                        sleep(ROCK_SNDRCV_REFR);
+                        break;
+                    }
+                }
+                if (recoverybytessent == rocket->tosendbytes)
+                    printf("[data]\t\tre-sent last %d bytes to recovery connection.\n", rocket->tosendbytes);
+                else
+                    continue; 
             }
             int s = send(rocket->sd, buffer + sentbytes, length - sentbytes, flags);
             if (s < 0) {
                 //printf("[data]\ttcp send returned -1: indicating a closed socket or a network failure.\n");
             }
             else {
+                /* update the sent bytes counter and store in a uint32_t variable */
+                rocket->sentcounter = (rocket->sentcounter + s) % UINT32_MAX;
+                /* push those sent bytes inside the inflight buffer */
+                ifb_push(rocket->ifb, buffer + sentbytes, s);
                 sentbytes += s;
-                //printf("[data]\t\tsuccessfully sent %d bytes.\n", sentbytes);
             }
         }
     }
@@ -943,7 +991,8 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
             }
             else {
                 rcvdheaderbytes += h;
-                rocket->rcvdbytes = rcvdheaderbytes;
+                /* update the received bytes counter and store in a uint32_t variable */
+                rocket->rcvdcounter = (rocket->rcvdcounter + h) % UINT32_MAX;
             }
         }
     }
@@ -963,8 +1012,8 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
             }
             else {
                 rcvdbytes += r;
-                rocket->rcvdbytes = rcvdbytes;
-                //printf("[data]\t\tsuccessfully received %d bytes.\n", rcvdbytes);
+                /* update the received bytes counter and store in a uint32_t variable */
+                rocket->rcvdcounter = (rocket->rcvdcounter + r) % UINT32_MAX;
             }
         }
     }
