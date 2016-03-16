@@ -104,6 +104,7 @@ void *rocket_tcp_task_open(void *arg) {
     rocket->sd = activetcpsock;
     rocket->state = CONNECTED;
     rocket->tcp_task = 0;
+    rocket->resetflag = 0;
 
     printf("[server]\ttcp socket on port %d is CONNECTED w/ rocket session cid %d.\n", port, rocket->cid);
     rocket_list_print_item(rocket);
@@ -189,6 +190,18 @@ void *rocket_ctrl_listen(void *arg) {
                 /* initialize the inflight buffer with size given by the sum of
                  * the local tcp socket SEND buffer and the client RECV buffer */
                 rocket->ifb = ifb_init(recvpkt->buffer + ROCK_TCP_SNDBUF);
+                
+                /* if the rocket is SUSPENDED and we receive a new rocket request
+                 * from the client, there was probably a crash on it.
+                 * reset every rocket counter on the server. */
+                if (rocket->state == SUSPENDED) {
+                    rocket->sentcounter = 0;
+                    rocket->rcvdcounter = 0;
+                    rocket->tosendbytes = 0;
+                    rocket->resetflag = 1;
+                    sleep(ROCK_SNDRCV_REFR+1); /* wait so every call can detect it */
+                }
+
                 /* start the Diffie-Hellman key exchange algorithm */
                 BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* generate a random private key a */
                 BN_CTX *ctx = BN_CTX_new();
@@ -444,6 +457,7 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
     rocket->sentcounter = 0;
     rocket->rcvdcounter = 0;
     rocket->tosendbytes = 0;
+    rocket->resetflag = 0;
     /* generate a random connection identifier (cid) for the rocket
      * but first check if it already exists! :) */
     int cid_decided = 0;
@@ -673,6 +687,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket->sentcounter = 0;
         rocket->rcvdcounter = 0;
         rocket->tosendbytes = 0;
+        rocket->resetflag = 0;
 
         pthread_mutex_lock(lock);
         rocket_list_insert(head, rocket, cid);  /* insert it into the list */
@@ -869,6 +884,8 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
     /* first send the 4 byte header */
     int sentheaderbytes = 0;
     while (sentheaderbytes != 4) {
+        if (rocket->resetflag == 1)
+            return ROCK_RESET;
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             was_suspended = 1;
             sleep(ROCK_SNDRCV_REFR);
@@ -914,6 +931,8 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
     /* now send the message of length defined in the header */
     int sentbytes = 0;
     while (sentbytes < length) {
+        if (rocket->resetflag == 1)
+            return ROCK_RESET;
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             was_suspended = 1;
             sleep(ROCK_SNDRCV_REFR);
@@ -927,6 +946,8 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                 int recoverybytessent = 0;
 
                 while (recoverybytessent < rocket->tosendbytes) {
+                    if (rocket->resetflag == 1)
+                        return ROCK_RESET;
                     int rs = send(rocket->sd, ifb_getlastpushed(rocket->ifb, rocket->tosendbytes) + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
                     if (rs > 0) {
                         recoverybytessent += rs;
@@ -980,6 +1001,8 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
     unsigned char *header = malloc(4);
     int rcvdheaderbytes = 0;
     while (rcvdheaderbytes != 4) {
+        if (rocket->resetflag == 1)
+            return ROCK_RESET;
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             sleep(ROCK_SNDRCV_REFR);
         }
@@ -1002,6 +1025,8 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
     /* now receive the message of length indicated in the header */
     int rcvdbytes = 0;
     while (rcvdbytes < length) {
+        if (rocket->resetflag == 1)
+            return ROCK_RESET;
         if (rocket->state == SUSPENDED || rocket->state == CLOSED) {
             sleep(ROCK_SNDRCV_REFR);
         }

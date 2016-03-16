@@ -10,7 +10,7 @@
 #define ROCK_UDPPORT        211
 #define ROCK_CTRLPKTSIZE    ROCK_DH_BYTE+3
 #define ROCK_CTRLMAXRETRY   5
-#define ROCK_CTRLTIMEOUT    5
+#define ROCK_CTRLTIMEOUT    7
 #define ROCK_DH_BIT         128
 #define ROCK_DH_BYTE        ROCK_DH_BIT/8
 #define ROCK_TCP_RCVBUF     64000
@@ -44,6 +44,7 @@ typedef struct rocket_t {
     pthread_t cnet_monitor; /* client network monitor */
     uint32_t lasthbtime;    /* last valid heartbeat timestamp in s */
     char* serveraddr;       /* server ip address */
+    uint8_t resetflag;      /* if set to 1, every send or recv returns ROCK_RESET */
 } rocket_t;
 typedef struct rocket_list_node {
     uint16_t cid;
