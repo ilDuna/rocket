@@ -881,8 +881,9 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                 /* re-send last rocket->tosendbytes bytes from the in-flight buffer
                  * without updating the rocket->sentcounter and rocket->tosendbytes */
                 int recoverybytessent = 0;
+
                 while (recoverybytessent < rocket->tosendbytes) {
-                    int rs = send(rocket->sd, rocket->ifb->buffer + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    int rs = send(rocket->sd, ifb_getlastpushed(rocket->ifb, rocket->tosendbytes) + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
                     if (rs > 0) {
                         recoverybytessent += rs;
                     }
@@ -926,8 +927,9 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                 /* re-send last rocket->tosendbytes bytes from the in-flight buffer
                  * without updating the rocket->sentcounter and rocket->tosendbytes */
                 int recoverybytessent = 0;
+
                 while (recoverybytessent < rocket->tosendbytes) {
-                    int rs = send(rocket->sd, rocket->ifb->buffer + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    int rs = send(rocket->sd, ifb_getlastpushed(rocket->ifb, rocket->tosendbytes) + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
                     if (rs > 0) {
                         recoverybytessent += rs;
                     }
@@ -986,7 +988,7 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
         else {
             int h = recv(rocket->sd, header + rcvdheaderbytes, 4 - rcvdheaderbytes, 0);
             if (h < 0) {
-                printf("[data]\t\ttcp send returned -1 while receiving the header: \
+                printf("[data]\t\ttcp recv returned -1 while receiving the header: \
                         indicating a closed socket or a network failure.\n");
             }
             else {

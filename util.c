@@ -262,5 +262,6 @@ void rocket_list_print_item(rocket_t *rocket) {
     printf("sentcounter:\t%d\n", rocket->sentcounter);
     printf("rcvdcounter:\t%d\n", rocket->rcvdcounter);
     printf("tosendbytes:\t%d\n", rocket->tosendbytes);
+    printf("ifbuffer size:\t%d Bytes\n", rocket->ifb->length);
     printf("------------------\n");
 }
