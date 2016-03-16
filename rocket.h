@@ -22,6 +22,7 @@
 
 /* error codes */
 #define ROCK_ERR_NOTFOUND   (-2)
+#define ROCK_RESET          (-3)
 
 typedef enum {SERVER, CLIENT} rocket_role;
 typedef enum {CONNECTED, AVAILABLE, SUSPENDED, CLOSED} rocket_state;

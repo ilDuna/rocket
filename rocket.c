@@ -105,7 +105,6 @@ void *rocket_tcp_task_open(void *arg) {
     rocket->state = CONNECTED;
     rocket->tcp_task = 0;
 
-    //TODO: signal anyone?
     printf("[server]\ttcp socket on port %d is CONNECTED w/ rocket session cid %d.\n", port, rocket->cid);
     rocket_list_print_item(rocket);
     /* close the listening socket (not the active socket!) */
@@ -518,7 +517,6 @@ void *rocket_client_network_monitor(void *arg) {
                 shutdown(rocket->sd, SHUT_RDWR);    /* shutdown socket and disable send & recv */
                 close(rocket->sd);  /* close the current tcp socket */
 
-                //TODO: SIGNAL ANYONE????? ---------------------
                 printf("[client]\trocket %d is SUSPENDED.\n", rocket->cid);
             }
         }
@@ -526,8 +524,9 @@ void *rocket_client_network_monitor(void *arg) {
         if (pkt_hbresp->type == 200 && rocket->state == SUSPENDED) {
             /* we can start the reconnection routine */
             int retry = ROCK_CTRLMAXRETRY;
+            int routine = 1; /* select the reconnection routine */
             while(retry > 0) {
-                int res = rocket_connect(1, head, rocket->serveraddr, port, lock);
+                int res = rocket_connect(routine, head, rocket->serveraddr, port, lock);
                 if (res == -1 && retry == 1) {
                     printf("[client]\trocket reconnection routine failed. Retrying in %d seconds.\n", (int)ROCK_HB_RATE);
                     break;
@@ -737,7 +736,7 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         if (pkt_6->type == 100) {
             //TODO: this could be caused by a Server crash
             //      so we might need to initialize a NEW rocket connect!
-            return -1;
+            return ROCK_RESET;
         }
         /* complete the client authentication responding to the challenge */
         rocket_ctrl_pkt pkt_7;
@@ -806,7 +805,6 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         /* set the rocket state to CONNECTED and save the socket file descriptor */
         rocket->state = CONNECTED;
         rocket->sd = tcpsock;
-        //TODO: SIGNAL ANYONE??????!???????
 
         return 0;
     }
