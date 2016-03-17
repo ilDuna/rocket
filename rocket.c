@@ -1049,6 +1049,29 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
     return rcvdbytes;
 }
 
+/* close the socket and free every related memory allocation */
+int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock) {
+    pthread_mutex_lock(lock);
+    rocket_t *rocket = rocket_list_find(*head, cid);
+    pthread_mutex_unlock(lock);
+    if (rocket == 0)
+        return -1;
+
+    BN_free(rocket->a);
+    BN_free(rocket->k);
+    BN_free(rocket->challenge);
+    ifb_free(rocket->ifb);
+    shutdown(rocket->sd, SHUT_RDWR);
+    close(rocket->sd);
+    pthread_cancel(rocket->cnet_monitor);
+
+    pthread_mutex_lock(lock);
+    if (rocket_list_remove(head, cid) < 0)
+        return -1;
+    pthread_mutex_unlock(lock);
+    return 0;
+}
+
 
 int main(int argc, char *argv[]) {
     if (argc > 3 && strcmp(argv[1], "-c")==0) {
