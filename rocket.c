@@ -897,8 +897,9 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                  * without updating the rocket->sentcounter and rocket->tosendbytes */
                 int recoverybytessent = 0;
 
+                unsigned char *tosendbytes = ifb_getlastpushed(rocket->ifb, rocket->tosendbytes);
                 while (recoverybytessent < rocket->tosendbytes) {
-                    int rs = send(rocket->sd, ifb_getlastpushed(rocket->ifb, rocket->tosendbytes) + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    int rs = send(rocket->sd, tosendbytes + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
                     if (rs > 0) {
                         recoverybytessent += rs;
                     }
@@ -908,6 +909,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                         break;
                     }
                 }
+                free(tosendbytes);
                 if (recoverybytessent == rocket->tosendbytes)
                     printf("[data]\t\tre-sent last %d bytes to recovery connection.\n", rocket->tosendbytes);
                 else
@@ -945,10 +947,11 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                  * without updating the rocket->sentcounter and rocket->tosendbytes */
                 int recoverybytessent = 0;
 
+                unsigned char *tosendbytes = ifb_getlastpushed(rocket->ifb, rocket->tosendbytes);
                 while (recoverybytessent < rocket->tosendbytes) {
                     if (rocket->resetflag == 1)
                         return ROCK_RESET;
-                    int rs = send(rocket->sd, ifb_getlastpushed(rocket->ifb, rocket->tosendbytes) + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
+                    int rs = send(rocket->sd, tosendbytes + recoverybytessent, rocket->tosendbytes - recoverybytessent, flags);
                     if (rs > 0) {
                         recoverybytessent += rs;
                     }
@@ -958,6 +961,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
                         break;
                     }
                 }
+                free(tosendbytes);
                 if (recoverybytessent == rocket->tosendbytes)
                     printf("[data]\t\tre-sent last %d bytes to recovery connection.\n", rocket->tosendbytes);
                 else

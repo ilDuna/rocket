@@ -16,51 +16,35 @@ ifbuffer_t *ifb_init(int length) {
 	ifb->buffer = malloc(length);
 	bzero(ifb->buffer, length);
 	ifb->length = length;
-	ifb->items = 0;
+	ifb->position = 0;
 	return ifb;
 }
 
 int ifb_push(ifbuffer_t *ifb, char *data, int items) {
-	if (items >= ifb->length) {
-		bzero(ifb->buffer, ifb->length);
-		memcpy(ifb->buffer, data + (items - ifb->length), ifb->length);
-		ifb->items = ifb->length;
-	}
-	else if (items + ifb->items > ifb->length) {
-		ifb_pop(ifb, (items + ifb->items) - ifb->length);
-		memcpy(ifb->buffer + ifb->items, data, items);
-		ifb->items += items;
+	int space = ifb->length - ifb->position;
+	if (items <= space) {
+		memcpy(ifb->buffer + ifb->position, data, items);
+		ifb->position = (ifb->position + items) % ifb->length;
 	}
 	else {
-		memcpy(ifb->buffer + ifb->items, data, items);
-		ifb->items += items;
+		memcpy(ifb->buffer + ifb->position, data, space);
+		ifb->position = 0;
+		ifb_push(ifb, data + space, items - space);
 	}
-	return 0;
-}
-
-int ifb_pop(ifbuffer_t *ifb, int items) {
-	if (ifb->length == 0 ||
-		items > ifb->items ||
-		items > ifb->length)
-		return -1;
-	bzero(ifb->buffer, items);
-	ifb->items -= items;
-	int new_pos = 0;
-	int cur_pos = items;
-	for (cur_pos = items; cur_pos < ifb->length; cur_pos++) {
-		ifb->buffer[new_pos] = ifb->buffer[cur_pos];
-		new_pos++;
-	}
-	bzero(ifb->buffer + ifb->items, ifb->length - ifb->items);
 	return 0;
 }
 
 unsigned char *ifb_getlastpushed(ifbuffer_t *ifb, int items) {
-	if (items > ifb->items) {
-		return NULL;
-		//??
+	unsigned char *lastpushed = malloc(items);
+	if (items <= ifb->position) {
+		memcpy(lastpushed, ifb->buffer + ifb->position - items, items);
 	}
-	return ifb->buffer + ifb->items - items;
+	else {
+		int over = items % ifb->position;
+		memcpy(lastpushed, ifb->buffer + ifb->length - over, over);
+		memcpy(lastpushed + over, ifb->buffer, ifb->position);
+	}
+	return lastpushed;
 }
 
 void ifb_free(ifbuffer_t *ifb) {
@@ -69,13 +53,20 @@ void ifb_free(ifbuffer_t *ifb) {
 }
 
 void ifb_print(ifbuffer_t *ifb) {
-	printf("in-flight buffer (size %d, items %d):\n", ifb->length, ifb->items);
+	printf("in-flight buffer (length %d):\n", ifb->length);
 	int i = 0;
 	for (i = 0; i < ifb->length; i++) {
 		if (ifb->buffer[i] == 0)
 			printf("_ ");
 		else
 			printf("%c ", ifb->buffer[i]);
+	}
+	printf("\n");
+	for (i = 0; i < ifb->length; i++) {
+		if (i == ifb->position)
+			printf("^ ");
+		else
+			printf("  ");
 	}
 	printf("\n");
 }
