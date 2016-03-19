@@ -428,7 +428,6 @@ int rocket_ctrl_server(rocket_list_node **head, pthread_mutex_t *lock) {
     arg->lock = lock;
     pthread_create(&tid_listen, NULL, rocket_ctrl_listen, arg);
     pthread_create(&tid_network, NULL, rocket_network_monitor, arg);
-                                        //TODO: remove joins. Leave it here just for debug purpose
     //pthread_join(tid_listen, NULL);
     //pthread_join(tid_network, NULL);
     return 0;
@@ -980,7 +979,7 @@ int rocket_send(rocket_list_node **head, uint16_t cid, char *buffer, uint32_t le
             }
         }
     }
-    printf("[data]\t\trocket_send successfully completed: %d bytes sent.\n", sentbytes);
+    //printf("[data]\t\trocket_send successfully completed: %d bytes sent.\n", sentbytes);
     if (sentbytes > length)
         printf("[data]\t\tWARNING! sent %d bytes instead of %d bytes.\n", sentbytes, length);
     free(header);
@@ -1046,7 +1045,7 @@ int rocket_recv(rocket_list_node **head, uint16_t cid, char **buffer, pthread_mu
             }
         }
     }
-    printf("[data]\t\trocket_recv successfully completed: %d bytes received.\n", rcvdbytes);
+    //printf("[data]\t\trocket_recv successfully completed: %d bytes received.\n", rcvdbytes);
     if (rcvdbytes > length)
         printf("[data]\t\tWARNING! received %d bytes instead of %d bytes.\n", rcvdbytes, length);
     free(header);
@@ -1076,7 +1075,7 @@ int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock) {
     return 0;
 }
 
-
+/*
 int main(int argc, char *argv[]) {
     if (argc > 3 && strcmp(argv[1], "-c")==0) {
         printf("--client mode--\n");
@@ -1107,4 +1106,4 @@ int main(int argc, char *argv[]) {
         printf("usage: rocket [-c server_ip_address tcp_port] [-s]\n");
 
 	return 0;
-}
+}*/
