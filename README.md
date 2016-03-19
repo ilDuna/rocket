@@ -1,5 +1,5 @@
 # Rocket
-*A Robust Socket (rocket) implementation based on **Reliable Network Connections** [Victor C. Zandy, Barton P. Miller] (http://goo.gl/AwuFvG) and **Robust TCP Connections for Fault Tolerant Computing** [Richard Ekwall, Péter Urbán, André Schiper] (http://goo.gl/cB4APH)*
+*A Robust Socket (rocket) implementation based on Reliable Network Connections [Victor C. Zandy, Barton P. Miller] (http://goo.gl/AwuFvG) and Robust TCP Connections for Fault Tolerant Computing [Richard Ekwall, Péter Urbán, André Schiper] (http://goo.gl/cB4APH)*
 
 To compile with flags **-lcrypto -pthread**.
 
