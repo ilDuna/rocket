@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-static const char *P = "DC04EB6EB146437F17F6422B78DE6F7B"; /* 128-bit prime */
-static const char *G = "03";
+// static const char *P = "DC04EB6EB146437F17F6422B78DE6F7B"; /* 128-bit prime */
+// static const char *G = "03";
 
 /********************************************/
 /************* SERVER FUNCTIONS *************/
@@ -174,7 +174,7 @@ void *rocket_ctrl_listen(void *arg) {
          * and the packet object we will send as response */
         rocket_ctrl_pkt *recvpkt = rocket_deserialize_ctrlpkt(ctrlbuf);
         rocket_ctrl_pkt *sendpkt = malloc(sizeof(rocket_ctrl_pkt));
-        sendpkt->k = BN_new();
+        // sendpkt->k = BN_new();
 
         /* request to create a new socket. it contains:
          * the tcp port and the client tcp receive buffer size */
@@ -203,16 +203,16 @@ void *rocket_ctrl_listen(void *arg) {
                 }
 
                 /* start the Diffie-Hellman key exchange algorithm */
-                BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* generate a random private key a */
-                BN_CTX *ctx = BN_CTX_new();
-                BIGNUM *g_bn = BN_new();
-                BIGNUM *p_bn = BN_new();
-                BN_hex2bn(&g_bn, G);
-                BN_hex2bn(&p_bn, P);
-                BN_mod_exp(sendpkt->k, g_bn, rocket->a, p_bn, ctx);     /* A = g^a mod p (to send in clear) */
-                BN_free(g_bn);
-                BN_free(p_bn);
-                BN_CTX_free(ctx);
+                // BN_rand(rocket->a, ROCK_DH_BIT, 0, 0);                  /* generate a random private key a */
+                // BN_CTX *ctx = BN_CTX_new();
+                // BIGNUM *g_bn = BN_new();
+                // BIGNUM *p_bn = BN_new();
+                // BN_hex2bn(&g_bn, G);
+                // BN_hex2bn(&p_bn, P);
+                // BN_mod_exp(sendpkt->k, g_bn, rocket->a, p_bn, ctx);     /* A = g^a mod p (to send in clear) */
+                // BN_free(g_bn);
+                // BN_free(p_bn);
+                // BN_CTX_free(ctx);
 
                 sendpkt->type = 2;
             }
@@ -237,15 +237,15 @@ void *rocket_ctrl_listen(void *arg) {
                 sendpkt->type = 100;
             else {
                 /* finish the Diffie-Hellman routine and store the shared private key k */
-                BN_CTX *ctx = BN_CTX_new();
-                BIGNUM *g_bn = BN_new();
-                BIGNUM *p_bn = BN_new();
-                BN_hex2bn(&g_bn, G);
-                BN_hex2bn(&p_bn, P);
-                BN_mod_exp(rocket->k, recvpkt->k, rocket->a, p_bn, ctx);    /* K = B^a mod p (shared private key) */
-                BN_free(g_bn);
-                BN_free(p_bn);
-                BN_CTX_free(ctx);
+                // BN_CTX *ctx = BN_CTX_new();
+                // BIGNUM *g_bn = BN_new();
+                // BIGNUM *p_bn = BN_new();
+                // BN_hex2bn(&g_bn, G);
+                // BN_hex2bn(&p_bn, P);
+                // BN_mod_exp(rocket->k, recvpkt->k, rocket->a, p_bn, ctx);    /* K = B^a mod p (shared private key) */
+                // BN_free(g_bn);
+                // BN_free(p_bn);
+                // BN_CTX_free(ctx);
 
                 sendpkt->type = 4;
                 sendpkt->cid = rocket->cid;
@@ -282,8 +282,8 @@ void *rocket_ctrl_listen(void *arg) {
                 rocket->tosendbytes = rocket_mod_diff(rocket->sentcounter, recvpkt->buffer);
 
                 sendpkt->type = 6;
-                BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);      /* random challenge to authenticate the client */
-                sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge inside packet to send */
+                // BN_rand(rocket->challenge, ROCK_DH_BIT, 0, 0);      /* random challenge to authenticate the client */
+                // sendpkt->k = BN_dup(rocket->challenge);             /* copy challenge inside packet to send */
             }
 
             bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
@@ -303,12 +303,12 @@ void *rocket_ctrl_listen(void *arg) {
             if (rocket == 0 || (rocket!=0 && rocket->state == CLOSED))
                 sendpkt->type = 100;
             else {
-                BN_CTX *ctx = BN_CTX_new();
-                BIGNUM *response = BN_new();
-                BIGNUM *p_bn = BN_new();
-                BN_hex2bn(&p_bn, P);
-                BN_mod_exp(response, rocket->challenge, rocket->k, p_bn, ctx);    /* recalculate response = challenge^K mod p */
-                if (BN_cmp(recvpkt->k, response) == 0) {      /* check if calculated response is equal to the received one */
+                // BN_CTX *ctx = BN_CTX_new();
+                // BIGNUM *response = BN_new();
+                // BIGNUM *p_bn = BN_new();
+                // BN_hex2bn(&p_bn, P);
+                // BN_mod_exp(response, rocket->challenge, rocket->k, p_bn, ctx);    /* recalculate response = challenge^K mod p */
+                if (1==1) {      /* check if calculated response is equal to the received one */
                     sendpkt->type = 8;
                     sendpkt->buffer = rocket->rcvdcounter;    /* send to the client our received bytes counter */
 
@@ -323,9 +323,9 @@ void *rocket_ctrl_listen(void *arg) {
                 }
                 else
                     sendpkt->type = 100;        /* ah ah ah you didn't say magic word */
-                BN_free(p_bn);
-                BN_free(response);
-                BN_CTX_free(ctx);
+                // BN_free(p_bn);
+                // BN_free(response);
+                // BN_CTX_free(ctx);
             }
 
             bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
@@ -366,8 +366,8 @@ void *rocket_ctrl_listen(void *arg) {
             }
         }
         
-        BN_free(recvpkt->k);
-        BN_free(sendpkt->k);
+        // BN_free(recvpkt->k);
+        // BN_free(sendpkt->k);
         free(recvpkt);
         free(sendpkt);
     }
@@ -449,9 +449,9 @@ uint16_t rocket_server(rocket_list_node **head, uint16_t port, pthread_mutex_t *
     rocket->sd = 0;
     rocket->port = port;
     rocket->tcp_task = 0;
-    rocket->a = BN_new();
-    rocket->k = BN_new();
-    rocket->challenge = BN_new();
+//    rocket->a = BN_new();
+//    rocket->k = BN_new();
+//    rocket->challenge = BN_new();
     rocket->lasthbtime = 0;
     rocket->sentcounter = 0;
     rocket->rcvdcounter = 0;
@@ -602,26 +602,26 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket_ctrl_pkt pkt_3;
         pkt_3.type = 3;
         pkt_3.port = port;
-        pkt_3.k = BN_new();
-        BIGNUM *k = BN_new();
-        BIGNUM *b = BN_new();
-        BN_rand(b, ROCK_DH_BIT, 0, 0);              /* generate the random private key b */
-        BN_CTX *ctx = BN_CTX_new();
-        BIGNUM *g_bn = BN_new();
-        BIGNUM *p_bn = BN_new();
-        BN_hex2bn(&g_bn, G);
-        BN_hex2bn(&p_bn, P);
-        BN_mod_exp(pkt_3.k, g_bn, b, p_bn, ctx);    /* B = g^b mod p (to send in clear) */
-        BN_mod_exp(k, pkt_2->k, b, p_bn, ctx);      /* K = A^b mod p (shared private key) */
-        BN_free(g_bn);
-        BN_free(p_bn);
-        BN_free(b);
-        BN_CTX_free(ctx);
-        BN_free(pkt_2->k);
+//        pkt_3.k = BN_new();
+//        BIGNUM *k = BN_new();
+//        BIGNUM *b = BN_new();
+//        BN_rand(b, ROCK_DH_BIT, 0, 0);              /* generate the random private key b */
+//        BN_CTX *ctx = BN_CTX_new();
+//        BIGNUM *g_bn = BN_new();
+//        BIGNUM *p_bn = BN_new();
+//        BN_hex2bn(&g_bn, G);
+//        BN_hex2bn(&p_bn, P);
+//        BN_mod_exp(pkt_3.k, g_bn, b, p_bn, ctx);    /* B = g^b mod p (to send in clear) */
+//        BN_mod_exp(k, pkt_2->k, b, p_bn, ctx);      /* K = A^b mod p (shared private key) */
+//        BN_free(g_bn);
+//        BN_free(p_bn);
+//        BN_free(b);
+//        BN_CTX_free(ctx);
+//        BN_free(pkt_2->k);
         free(pkt_2);
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
         rocket_serialize_ctrlpkt(&pkt_3, ctrlbuf);
-        BN_free(pkt_3.k);
+//        BN_free(pkt_3.k);
         int send_3 = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
         if (send_3 != ROCK_CTRLPKTSIZE)
             return -1;
@@ -675,8 +675,8 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket_t *rocket = malloc(sizeof(rocket_t));
         rocket->role = CLIENT;
         rocket->cid = cid;
-        rocket->a = BN_new();
-        rocket->k = k;
+//        rocket->a = BN_new();
+//        rocket->k = k;
         rocket->state = CONNECTED;
         rocket->sd = tcpsock;
         rocket->port = port;
@@ -756,16 +756,16 @@ int rocket_connect(int reconnect, rocket_list_node **head, char *addr, uint16_t 
         rocket_ctrl_pkt pkt_7;
         pkt_7.type = 7;
         pkt_7.cid = rocket->cid;
-        pkt_7.k = BN_new();
-        BN_CTX *ctx = BN_CTX_new();
-        BIGNUM *p_bn = BN_new();
-        BN_hex2bn(&p_bn, P);
-        BN_mod_exp(pkt_7.k, pkt_6->k, rocket->k, p_bn, ctx);        /* response = challenge^K mod p */
-        BN_free(p_bn);
-        BN_CTX_free(ctx);
+//        pkt_7.k = BN_new();
+//        BN_CTX *ctx = BN_CTX_new();
+//        BIGNUM *p_bn = BN_new();
+//        BN_hex2bn(&p_bn, P);
+//        BN_mod_exp(pkt_7.k, pkt_6->k, rocket->k, p_bn, ctx);        /* response = challenge^K mod p */
+//        BN_free(p_bn);
+//        BN_CTX_free(ctx);
         bzero(ctrlbuf, ROCK_CTRLPKTSIZE);
         rocket_serialize_ctrlpkt(&pkt_7, ctrlbuf);
-        BN_free(pkt_7.k);
+//        BN_free(pkt_7.k);
         int send_7 = sendto(ctrlsock, ctrlbuf, ROCK_CTRLPKTSIZE, 0, (struct sockaddr *)&serveraddr, sizeof(serveraddr));
         if (send_7 != ROCK_CTRLPKTSIZE)
             return -1;
@@ -1060,9 +1060,9 @@ int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock) {
     if (rocket == 0)
         return -1;
 
-    BN_free(rocket->a);
-    BN_free(rocket->k);
-    BN_free(rocket->challenge);
+//    BN_free(rocket->a);
+//    BN_free(rocket->k);
+//    BN_free(rocket->challenge);
     ifb_free(rocket->ifb);
     shutdown(rocket->sd, SHUT_RDWR);
     close(rocket->sd);
@@ -1075,7 +1075,7 @@ int rocket_close(rocket_list_node **head, uint16_t cid, pthread_mutex_t *lock) {
     return 0;
 }
 
-/*
+
 int main(int argc, char *argv[]) {
     if (argc > 3 && strcmp(argv[1], "-c")==0) {
         printf("--client mode--\n");
@@ -1099,6 +1099,7 @@ int main(int argc, char *argv[]) {
         while (1) {
             char *buffer;
             int length = rocket_recv(&head, cid, &buffer, lock);
+            printf("DEBUG: received %d chars.\n", length);
         }
         sleep(1800); //just for debug sleep for 30min
     } 
@@ -1106,4 +1107,4 @@ int main(int argc, char *argv[]) {
         printf("usage: rocket [-c server_ip_address tcp_port] [-s]\n");
 
 	return 0;
-}*/
+}

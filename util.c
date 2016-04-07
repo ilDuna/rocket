@@ -50,13 +50,13 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     }
     else if (pkt->type == 2) {
         rocket_stobytes(pkt->type, bytes);
-        BN_bn2bin(pkt->k, bytes+1);
+        /*BN_bn2bin(pkt->k, bytes+1);*/bzero(bytes+1, ROCK_DH_BYTE);
         bzero(bytes+1+ROCK_DH_BYTE, ROCK_CTRLPKTSIZE-1-ROCK_DH_BYTE);
     }
     else if (pkt->type == 3) {
         rocket_stobytes(pkt->type, bytes);
         rocket_itobytes(pkt->port, bytes+1);
-        BN_bn2bin(pkt->k, bytes+3);
+        /*BN_bn2bin(pkt->k, bytes+3);*/bzero(bytes+3, ROCK_DH_BYTE);
     }
     else if (pkt->type == 4) {
         rocket_stobytes(pkt->type, bytes);
@@ -72,13 +72,13 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
     }
     else if (pkt->type == 6) {
         rocket_stobytes(pkt->type, bytes);
-        BN_bn2bin(pkt->k, bytes+1);
+        /*BN_bn2bin(pkt->k, bytes+1);*/bzero(bytes+1, ROCK_DH_BYTE);
         bzero(bytes+1+ROCK_DH_BYTE, ROCK_CTRLPKTSIZE-1-ROCK_DH_BYTE);
     }
     else if (pkt->type == 7) {
         rocket_stobytes(pkt->type, bytes);
         rocket_itobytes(pkt->cid, bytes+1);
-        BN_bn2bin(pkt->k, bytes+3);
+        /*BN_bn2bin(pkt->k, bytes+3);*/bzero(bytes+3, ROCK_DH_BYTE);
     }
     else if (pkt->type == 8) {
         rocket_stobytes(pkt->type, bytes);
@@ -99,18 +99,18 @@ void rocket_serialize_ctrlpkt(rocket_ctrl_pkt *pkt, unsigned char *bytes) {
 /* transform a byte array to a struct rocket_ctrl_pkt */
 rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
     rocket_ctrl_pkt *pkt = malloc(sizeof(rocket_ctrl_pkt));
-    pkt->k = BN_new();
+    //pkt->k = BN_new();
     pkt->type = rocket_bytestos(bytes);
     if (pkt->type == 1) {
         pkt->port = rocket_bytestoi(bytes+1);
         pkt->buffer = rocket_bytestol(bytes+3);
     }
     else if (pkt->type == 2) {
-        BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
+        // BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
     }
     else if (pkt->type == 3) {
         pkt->port = rocket_bytestoi(bytes+1);
-        BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
+        // BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
     }
     else if (pkt->type == 4) {
         pkt->cid = rocket_bytestoi(bytes+1);
@@ -121,11 +121,11 @@ rocket_ctrl_pkt *rocket_deserialize_ctrlpkt(unsigned char *bytes) {
         pkt->buffer = rocket_bytestol(bytes+3);
     }
     else if (pkt->type == 6) {
-        BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
+        // BN_bin2bn(bytes+1, ROCK_DH_BYTE, pkt->k);
     }
     else if (pkt->type == 7) {
         pkt->cid = rocket_bytestoi(bytes+1);
-        BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
+        // BN_bin2bn(bytes+3, ROCK_DH_BYTE, pkt->k);
     }
     else if (pkt->type == 8) {
         pkt->buffer = rocket_bytestol(bytes+1);
@@ -256,8 +256,8 @@ void rocket_list_print_item(rocket_t *rocket) {
     printf("sd:\t\t%d\n", rocket->sd);
     printf("port:\t\t%d\n", rocket->port);
     printf("tcp_task:\t%d\n", rocket->tcp_task);
-    printf("a:\t\t%s\n", BN_bn2hex(rocket->a));
-    printf("k:\t\t%s\n", BN_bn2hex(rocket->k));
+    //printf("a:\t\t%s\n", BN_bn2hex(rocket->a));
+    //printf("k:\t\t%s\n", BN_bn2hex(rocket->k));
     printf("lasthbtime:\t%u\n", rocket->lasthbtime);
     printf("sentcounter:\t%d\n", rocket->sentcounter);
     printf("rcvdcounter:\t%d\n", rocket->rcvdcounter);
